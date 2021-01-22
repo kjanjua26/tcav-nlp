@@ -22,6 +22,7 @@
 # Last Modified: 9 September, 2020
 # Last Modified: 15 September, 2020
 # Taken from: https://github.com/fdalvi/aux_classifier
+
 import argparse
 import collections
 import json
@@ -30,9 +31,6 @@ import sys
 import numpy as np
 import torch
 import h5py
-
-# sys.path.append("/export/work/static_embedding/software/transformers/src/")
-
 from tqdm import tqdm
 from transformers import (
     XLNetTokenizer,
@@ -111,29 +109,6 @@ def get_model_and_tokenizer(
 
     return model, tokenizer, sep
 
-
-# aggregate_repr
-# Function that aggregates activations/embeddings over a span of subword tokens
-#
-# Parameters:
-#  state: Matrix of size [ NUM_LAYERS x NUM_SUBWORD_TOKENS_IN_SENT x LAYER_DIM]
-#  start: index of the first subword of the word being processed
-#  end: index of the last subword of the word being processed
-#  aggregation: aggregation method
-#
-# Returns:
-#  word_vector: Matrix of size [NUM_LAYERS x LAYER_DIM]
-#
-# This function will be called once per word. For example, if we had the sentence:
-#   "This is an example"
-# Tokenized by BPE:
-#   "this is an ex @@am @@ple"
-#
-# The function will be called 4 times:
-#   aggregate_repr(state, 0, 0, aggregation)
-#   aggregate_repr(state, 1, 1, aggregation)
-#   aggregate_repr(state, 2, 2, aggregation)
-#   aggregate_repr(state, 3, 5, aggregation)
 def aggregate_repr(state, start, end, aggregation):
     if aggregation == "first":
         return state[:, start, :]
@@ -141,7 +116,6 @@ def aggregate_repr(state, start, end, aggregation):
         return state[:, end, :]
     elif aggregation == "average":
         return np.average(state[:, start : end + 1, :], axis=1)
-
 
 # this follows the HuggingFace API for pytorch-transformers
 def get_sentence_repr(
@@ -172,11 +146,8 @@ def get_sentence_repr(
         # Get tokenization counts if not already available
         for token_idx, token in enumerate(original_tokens):
             tok_ids = [x for x in tokenizer.encode(token) if x not in special_tokens_ids]
-            # print(tokenizer.convert_ids_to_tokens(tok_ids))
             if token_idx != 0:
                 tok_ids = tok_ids[1:]
-                # print(tokenizer.convert_ids_to_tokens(tok_ids))
-            # print('------------')
             if token in tokenization_counts:
                 assert(tokenization_counts[token] == len(tok_ids))
             else:
@@ -229,7 +200,7 @@ def get_sentence_repr(
     else:
         assert(counter == len(ids_without_special_tokens))
         assert(len(detokenized) == len(original_tokens))
-    print("===================================================================")
+    print("="*100)
 
     return final_hidden_states, detokenized
 
@@ -368,14 +339,14 @@ HDF5_SPECIAL_TOKENS = {
 
 def main():
     parser = argparse.ArgumentParser()
-    #parser.add_argument("model_name", help="Name of model")
-    #parser.add_argument(
-    #    "input_corpus", help="Text file path with one sentence per line"
-    #)
-    #parser.add_argument(
-    #    "output_file",
-    #    help="Output file path where extracted representations will be stored",
-    #)
+    parser.add_argument("model_name", help="Name of model")
+    parser.add_argument(
+        "input_corpus", help="Text file path with one sentence per line"
+    )
+    parser.add_argument(
+       "output_file",
+        help="Output file path where extracted representations will be stored",
+    )
     parser.add_argument(
         "--filter_vocab",
         default=None,
@@ -422,9 +393,9 @@ def main():
     else:
         device = torch.device("cpu")
 
-    extract_representations("bert-base-uncased",
-        "/Users/Janjua/Desktop/QCRI/Work/aux_classifier/aux_classifier/mask.txt", 
-        "/Users/Janjua/Desktop/QCRI/Work/aux_classifier/aux_classifier/extractions-professions-mask.json",
+    extract_representations(args.model_name, 
+        args.input_corpus, 
+        args.output_file,
         device=device,
         aggregation="average",
         output_type="json",

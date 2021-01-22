@@ -4,13 +4,16 @@ This version uses: IMDB Movie Reviews Dataset for gendered concepts.
 The dataset is taken from: https://www.kaggle.com/lakshmi25npathi/imdb-dataset-of-50k-movie-reviews
 Given a corpus of sentences, this file prepares the data for concepts with appropriate labels.
     By searching for the appropriate sentence related to the concept in the input corpus.
+
+To run this: 
+python3 prepare_concepts.py -i ../../../data/IMDB\ Dataset.csv -o ../../../data/gendered_concepts.txt -c "gender" -f gender_f.txt gender_m.txt
 """
 
 import pandas as pd
 import argparse
 import json, re
 from tqdm import tqdm
-
+    
 def load_the_data(datapath):
     """Load the .csv data and get all the sentences."""
     if datapath.endswith(".csv"):
@@ -66,7 +69,7 @@ def main():
     parser = argparse.ArgumentParser()
     
     parser.add_argument("-i", "--input_corpus", 
-        help="File path with one sentence per line to prepare concepts from.")
+        help="File path to prepare concepts from.")
     parser.add_argument("-c", "--concept_type", default="gender",
         help="The type of concept to prepare data for.")
     parser.add_argument("-o", "--output_file",
@@ -80,19 +83,15 @@ def main():
     concepts = parse_concepts(args.concept_files)
 
     with open(args.output_file, 'w') as output:
-        output.write("sentence" + "," + "label" + "\n")
         for ix, para in tqdm(enumerate(get_each_para(args.input_corpus))):
             sents = para.split('.')
             for jx, sent in enumerate(get_each_sentence(sents)):
                 sent = sent.strip()
                 contains_concept = check_for_gendered_concept(sent, concepts)
                 if contains_concept is not None:
-                    val, label = contains_concept
-                    #print("({},{})".format(ix, jx), label, sent)
-                    output.write(sent)
-                    output.write(",")
-                    output.write(str(label))
-                    output.write("\n")
+                    if len(sent) < 155: # average sentence length, to minimize multi gender sentences.
+                        output.write(sent)
+                        output.write("\n")
     output.close()
 
 if __name__ == '__main__':
