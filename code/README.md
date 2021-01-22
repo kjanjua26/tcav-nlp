@@ -10,4 +10,10 @@ Finally we take the CAVs and take directional derivative to compute TCAVs to sco
 
 1. For this task, we compute the base activations of the sentences given in this file <a href="https://github.com/DCSaunders/gender-debias/blob/master/data/handcrafted/handcrafted.ende">BASE REPRESENTATIONS</a>. However, this data contains sentences for both male and female pronouns. We take unique sentences and change his/her with [MASK] for the BERT baseline model to fill up with. Run ```pipeline/file_parser.py``` to get ```mask.txt``` which is then used to extract the base representations.
 
-2. We extract the base representations from ```pipeline/extraction.py``` which can be run by typing the following command: ```python3 pipeline/extraction.py -model_name bert-base-uncased -input_corpus mask.txt -output_file extractions-professions-mask```. The activations for each layer (total 13 layers) will be stored in the output file specified.
+2. We extract the base representations from ```pipeline/extraction.py``` which can be run by typing the following command: ```python3 pipeline/extraction.py -model_name bert-base-uncased -input_corpus mask.txt -output_file extractions-professions-mask.json```. The activations for each layer (total 13 layers) will be stored in the output file specified.
+
+### Step # 02: Get the concept activations
+
+1. For this task, we take the concepts from IMDB Movie Reviews dataset which can be downloaded from Kaggle. Once that data is downloaded, type the following command to prepare the IMDB dataset in the form of concepts (one sentence per line) which can then be used to get the activations from BERT: ```python3 pipeline/prepare_concepts.py -i IMDB\ Dataset.csv -o gendered_concepts.txt -c "gender" -f gender_f.txt gender_m.txt```. These gender files are taken from the wordlist link: <a href="http://modelai.gettysburg.edu/2020/weat/student_materials/wordlists/">WORDLISTS</a>. 
+
+2. The output of the first step will be a .txt file which will be used to pass to the ```pipeline/extraction.py``` to get the activations (acts) from. To get those acts for the concepts, run the following command: ```python3 pipeline/extraction.py -model_name bert-base-uncased -input_corpus gendered_concepts.txt -output_file gendered-concept-acts.json```. This will run, takes some time, and make the .json file with the layer-wise-token-wise activations.
