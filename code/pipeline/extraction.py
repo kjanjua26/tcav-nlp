@@ -339,12 +339,12 @@ HDF5_SPECIAL_TOKENS = {
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("model_name", help="Name of model")
-    parser.add_argument(
-        "input_corpus", help="Text file path with one sentence per line"
+    parser.add_argument("-m", "--model_name", help="Name of model")
+    parser.add_argument("-i",
+        "--input_corpus", help="Text file path with one sentence per line"
     )
-    parser.add_argument(
-       "output_file",
+    parser.add_argument("-o",
+       "--output_file",
         help="Output file path where extracted representations will be stored",
     )
     parser.add_argument(
@@ -393,7 +393,7 @@ def main():
     else:
         device = torch.device("cpu")
 
-    extract_representations(args.model_name, 
+    extract_representations(args.model_name,
         args.input_corpus, 
         args.output_file,
         device=device,
