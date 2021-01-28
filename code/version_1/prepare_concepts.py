@@ -1,17 +1,14 @@
 """
-    Prepare the concept given two text files and the concept to prepare for.
-    Get extractions from the model choice and save it in activations.json for further processing.
-
-    CLI based Arguments: 
-        -i: [concept]_data.txt: contains a sentence per line where each word is separated by a space
-        -l: concept_data_labels.txt: contains labels per word in a single line (for a sentence) separated by space - corresponding to concept_data.txt
-        -m: model type - bert-base-uncased, etc.
-        -c: the required concepts, the concept type.
+    Prepares the concepts layer wise to compute CAVs.
+    
+    python3 prepare_concepts.py -i ../../../data/subsample.in -l ../../../data/subsample_label.in -e ../../../data/subsample_concept_acts.json -c "1" -o .
+    python3 prepare_concepts.py -i ../../../data/dconcept.in -l ../../../data/dconcept_labels.in -e ../../../data/dconcept_acts.json -c "NN" -o .
 """
 
 import argparse, sys
 import cavs
 import numpy as np
+from time import perf_counter 
 
 sys.path.append("/Users/Janjua/Desktop/QCRI/Work/aux_classifier/")
 import aux_classifier.extraction as extraction
@@ -202,7 +199,8 @@ def run_for_each_layer(bottleneck_concept_acts_per_layer, bottleneck_tokens, con
         X, y, _ = utils.create_tensors(toks, bottleneck_concept_acts_per_layer, concept)
         cav, accuracy = cavs.run(X, y, model_type="LR")
         print(f"The trained model achieved an accuracy of - {accuracy}")
-        cavs_for_layers[concept] = cav
+        if accuracy > 0.8: # only pick the CAV with accuracy higher than 80%.
+            cavs_for_layers[concept] = cav
     
     return cavs_for_layers
 
@@ -239,22 +237,28 @@ def main():
         help="File path to labels for concepts.")
     parser.add_argument("-e", "--embeddings",
         help="The path to the embeddings required.")
+    parser.add_argument("-c", "--concepts",
+        help="Perform test on individual concept or all the concepts in the dataset.\nPass in the concept name if you want to do it for all.")
     parser.add_argument("-o", "--output_file",
         help="The output file to store the concepts data in.")
     
     args = parser.parse_args()
     num_neurons = 768
     max_sentence_l = 512
+    concept_type = ["pos", "gender"] # currently only dealing with two types of concepts entirely - pos, gender (m, f).
+
     concept_sents = args.input_corpus
     concept_labels = args.label_corpus
+    concepts = args.concepts
 
-    #concepts_data = read_file(concept_sents)
-    
     concepts_labels_data = read_file(concept_labels)
     concept_acts, num_layers = load_activations(args.embeddings, num_neurons)
     
     concepts_dict = get_concepts_dict(concepts_labels_data)
     concepts2class = assign_labels_to_concepts(concepts_dict)
+
+    if concepts not in concept_type:
+        concepts2class = dict(filter(lambda i:i[0] in concepts.split(' '), concepts2class.items()))
 
     concept_bottleneck, tokens_bottleneck = get_bottlenecks(concept_acts, 
                                                             concept_sents, 
