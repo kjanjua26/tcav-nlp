@@ -3,14 +3,16 @@
 
     python3 prepare_concepts.py -i ../../../data/subsample.in -l ../../../data/subsample_label.in -e ../../../data/subsample_concept_acts.json -c "1" -o .
     python3 prepare_concepts.py -i ../../../data/dconcept.in -l ../../../data/dconcept_labels.in -e ../../../data/dconcept_acts.json -c "NN" -o .
+    python prepare_concepts.py -i ../../../data/subsample.in -l ../../../data/subsample_label.in -e ../../../data/subsample_concept_acts.json -c "gender" -o ../../../data/results
+
 """
 
-import argparse, sys
+import argparse, sys, os
 import cavs
 import numpy as np
 from time import perf_counter 
-from scipy.stats import shapiro
 import random
+import pickle
 
 sys.path.append("/Users/Janjua/Desktop/QCRI/Work/aux_classifier/")
 import aux_classifier.extraction as extraction
@@ -212,8 +214,8 @@ def run_for_each_layer(bottleneck_concept_acts_per_layer, bottleneck_tokens, con
     cavs_for_layers = {}
     random_cavs_for_layers = {}
 
-    labels = list(concepts2class.keys())
-
+    labels = list(concepts2class.values())
+    
     for idx, concept in concepts2class.items():
         print(f"Concept - {concept}")
         random_concept = choose_a_concept_other_than_current(concept, labels)
@@ -255,11 +257,29 @@ def run(concept_bottleneck, tokens_bottleneck, concepts2class):
         token_bottleneck = tokens_bottleneck[layer]
         cavs_for_layer, random_cavs_for_layer = run_for_each_layer(bottleneck_acts_per_layer, token_bottleneck, concepts2class)
         layer_wise_cavs[layer] = cavs_for_layer
-        layer_wise_random_cavs = random_cavs_for_layer
+        layer_wise_random_cavs[layer] = random_cavs_for_layer
         print("="*50)
         print()
 
     return layer_wise_cavs, layer_wise_random_cavs
+
+def write_the_cavs(output_path, layer_wise_cavs, layer_wise_random_cavs):
+    """
+    Write the computed CAVs (for both random and concept) in pickle files for further use.
+
+    Arguments
+        output_path (str): the output folder name.
+        layer_wise_cavs (dict): the layerwise computed CAVs.
+        layer_wise_random_cavs (dict): the layerwise computed random CAVs.
+    """
+    layer_wise_cavs_path = output_path + "/layer_wise_cavs.pickle"
+    layer_wise_random_cavs_path = output_path + "/layer_wise_random_cavs.pickle"
+
+    with open(layer_wise_cavs_path, "wb") as writer:
+        pickle.dump(layer_wise_cavs, writer)
+    
+    with open(layer_wise_random_cavs_path, "wb") as writer:
+        pickle.dump(layer_wise_random_cavs, writer)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -272,8 +292,8 @@ def main():
         help="The path to the embeddings required.")
     parser.add_argument("-c", "--concepts",
         help="Perform test on individual concept or all the concepts in the dataset.\nPass in the concept name (pos, gender) if you want to do it for all.")
-    parser.add_argument("-o", "--output_file",
-        help="The output file to store the concepts data in.")
+    parser.add_argument("-o", "--output_folder",
+        help="The output folder to store the concepts data in.")
     
     args = parser.parse_args()
     num_neurons = 768
@@ -283,7 +303,9 @@ def main():
     concept_sents = args.input_corpus
     concept_labels = args.label_corpus
     concepts = args.concepts
+    output_folder = args.output_folder
 
+    start = perf_counter()
     concepts_labels_data = read_file(concept_labels)
     concept_acts, num_layers = load_activations(args.embeddings, num_neurons)
     
@@ -299,6 +321,10 @@ def main():
                                                             num_layers, max_sentence_l)
     
     layer_wise_cavs, layer_wise_random_cavs = run(concept_bottleneck, tokens_bottleneck, concepts2class)
+    write_the_cavs(output_folder, layer_wise_cavs, layer_wise_random_cavs)
+    end = perf_counter()
+
+    print(f"Completed the process in {end-start}s")
 
 if __name__ == '__main__':
     main()
