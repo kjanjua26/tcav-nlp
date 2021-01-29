@@ -1,6 +1,6 @@
 """
     Prepares the concepts layer wise to compute CAVs.
-    
+
     python3 prepare_concepts.py -i ../../../data/subsample.in -l ../../../data/subsample_label.in -e ../../../data/subsample_concept_acts.json -c "1" -o .
     python3 prepare_concepts.py -i ../../../data/dconcept.in -l ../../../data/dconcept_labels.in -e ../../../data/dconcept_acts.json -c "NN" -o .
 """
@@ -9,6 +9,8 @@ import argparse, sys
 import cavs
 import numpy as np
 from time import perf_counter 
+from scipy.stats import shapiro
+import random
 
 sys.path.append("/Users/Janjua/Desktop/QCRI/Work/aux_classifier/")
 import aux_classifier.extraction as extraction
@@ -159,6 +161,22 @@ def assign_labels_to_concepts(concepts):
 
     return concepts2class
 
+def choose_a_concept_other_than_current(current, concepts):
+    """
+    Choose a concept from the list other than the one CAV is computed for.
+
+    Arguments
+        current (the current chosen concept).
+        concepts (list): the list of all the conecpts.
+    
+    Returns
+        chosen (the chosen concept other than current).
+    """
+    while True:
+        chosen = random.choice(concepts)
+        if current != chosen:
+            return chosen
+
 def get_bottlenecks(concept_acts, concept_sents, concept_labels, num_layers, max_sentence_l):
     """
     Converts the extracted embeddings, tokens to layer wise for easy layer-by-layer analysis.
@@ -192,21 +210,34 @@ def run_for_each_layer(bottleneck_concept_acts_per_layer, bottleneck_tokens, con
         cavs_for_layers (dict): the dictionary containing cav of each concept for a layer.
     """
     cavs_for_layers = {}
+    random_cavs_for_layers = {}
+
+    labels = list(concepts2class.keys())
 
     for idx, concept in concepts2class.items():
         print(f"Concept - {concept}")
+        random_concept = choose_a_concept_other_than_current(concept, labels)
+        
+        # train CAV for the actual data.
         toks = modify_labels_according_to_concept(bottleneck_tokens, bottleneck_concept_acts_per_layer, concept) # pass in the concept token vector
         X, y, _ = utils.create_tensors(toks, bottleneck_concept_acts_per_layer, concept)
         cav, accuracy = cavs.run(X, y, model_type="LR")
         print(f"The trained model achieved an accuracy of - {accuracy}")
         if accuracy > 0.8: # only pick the CAV with accuracy higher than 80%.
             cavs_for_layers[concept] = cav
-    
-    return cavs_for_layers
+
+        print(f"For Random Concept - {random_concept}")
+        # train CAV for the random data.
+        random_toks = modify_labels_according_to_concept(bottleneck_tokens, bottleneck_concept_acts_per_layer, random_concept) # pass in the random concept token vector
+        random_X, random_y, _ = utils.create_tensors(random_toks, bottleneck_concept_acts_per_layer, random_concept)
+        random_cav, random_accuracy = cavs.run(random_X, random_y, model_type="LR")
+        random_cavs_for_layers[random_concept] = random_cav
+        
+    return cavs_for_layers, random_cavs_for_layers
 
 def run(concept_bottleneck, tokens_bottleneck, concepts2class):
     """
-    Performs the run() function for each layer.
+    Performs the run_for_each_layer() function for each layer.
 
     Arguments
         bottleneck_concept_acts_per_layer (list): activations of a specific layer.
@@ -217,16 +248,18 @@ def run(concept_bottleneck, tokens_bottleneck, concepts2class):
         layer_wise_cavs (dict of dict): cavs of each layer for each concept.
     """
     layer_wise_cavs = {}
+    layer_wise_random_cavs = {}
 
     for layer, bottleneck_acts_per_layer in concept_bottleneck.items():
         print(f"For layer - {layer}")
         token_bottleneck = tokens_bottleneck[layer]
-        cavs_for_layer = run_for_each_layer(bottleneck_acts_per_layer, token_bottleneck, concepts2class)
+        cavs_for_layer, random_cavs_for_layer = run_for_each_layer(bottleneck_acts_per_layer, token_bottleneck, concepts2class)
         layer_wise_cavs[layer] = cavs_for_layer
+        layer_wise_random_cavs = random_cavs_for_layer
         print("="*50)
         print()
 
-    return layer_wise_cavs
+    return layer_wise_cavs, layer_wise_random_cavs
 
 def main():
     parser = argparse.ArgumentParser()
@@ -238,7 +271,7 @@ def main():
     parser.add_argument("-e", "--embeddings",
         help="The path to the embeddings required.")
     parser.add_argument("-c", "--concepts",
-        help="Perform test on individual concept or all the concepts in the dataset.\nPass in the concept name if you want to do it for all.")
+        help="Perform test on individual concept or all the concepts in the dataset.\nPass in the concept name (pos, gender) if you want to do it for all.")
     parser.add_argument("-o", "--output_file",
         help="The output file to store the concepts data in.")
     
@@ -265,7 +298,7 @@ def main():
                                                             concept_labels, 
                                                             num_layers, max_sentence_l)
     
-    layer_wise_cavs = run(concept_bottleneck, tokens_bottleneck, concepts2class)
+    layer_wise_cavs, layer_wise_random_cavs = run(concept_bottleneck, tokens_bottleneck, concepts2class)
 
 if __name__ == '__main__':
     main()
