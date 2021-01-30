@@ -313,11 +313,11 @@ def main():
     concepts2class = assign_labels_to_concepts(concepts_dict)
 
     if concepts not in concept_type:
-        concepts2class = dict(filter(lambda i:i[0] in concepts.split(' '), concepts2class.items()))
+        concepts2class = {i[0]: i[1] for i in enumerate(concepts.split(' '))}
 
-    concept_bottleneck, tokens_bottleneck = get_bottlenecks(concept_acts, 
-                                                            concept_sents, 
-                                                            concept_labels, 
+    concept_bottleneck, tokens_bottleneck = get_bottlenecks(concept_acts,
+                                                            concept_sents,
+                                                            concept_labels,
                                                             num_layers, max_sentence_l)
     
     layer_wise_cavs, layer_wise_random_cavs = run(concept_bottleneck, tokens_bottleneck, concepts2class)
