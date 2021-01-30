@@ -17,7 +17,7 @@ import pickle
 import numpy as np
 from time import perf_counter
 from scipy.stats import shapiro
-from prepare_concepts import segregate_acts_for_each_layer
+from prepare_concepts import segregate_acts_for_each_layer, get_concepts_dict,  assign_labels_to_concepts
 from collections import defaultdict
 
 sys.path.append("/Users/Janjua/Desktop/QCRI/Work/aux_classifier/")
@@ -64,6 +64,26 @@ def directional_derivative(ft, cav):
     """
     dot = np.dot(ft, cav)
     return dot < 0
+
+def mask_out_each_concept_in_base_sentences(sents, base_labels, concepts):
+    """
+    Masks out each concept in base sentences to compute the TCAV for each word for analysis.
+    """
+    sents_masked = {}
+
+    for concept in concepts:
+        sents_masked[concept] = []
+        for ix, sent in enumerate(sents):
+            label = base_labels[ix]
+            try:
+                index = label.split(' ').index(concept)
+                word_in_sent = sent.split(' ')[index]
+                sent = sent.replace(word_in_sent, '[MASK]', 1)
+                sents_masked[concept].append(sent)
+            except:
+                sents_masked[concept].append(sent)
+        
+    return sents_masked
 
 def compute_sentence_tcav(concept_cav_per_layer, random_cav_per_layer, bottleneck_base_per_layer):
     """
@@ -125,7 +145,7 @@ def run_sent(concept_cavs, random_cavs, bottleneck_base):
     
     return (layer_wise_tcavs, layer_wise_random_tcavs)
 
-def compute_word_tcav(concept_cavs, bottleneck_base, sentences, num_layers):
+def compute_word_tcav(concept_cavs, bottleneck_base, sentences, num_layers, word):
     """
     Compute TCAV scores for a given CAV of a concept and every word in each sentence in the base corpus.
 
@@ -144,18 +164,20 @@ def compute_word_tcav(concept_cavs, bottleneck_base, sentences, num_layers):
     
     for jx, sent in enumerate(sentences):
         words = list(sent.split(' '))
-        for ix in range(1, num_layers+1):
-            act_per_layer_per_sent = bottleneck_base[str(ix)][jx]
-            layer_cavs = concept_cavs[str(ix)]
-            for concept, cav in layer_cavs.items():
-                word_tcav[str(ix)][concept] = []
-                count = 0
-                for fx, act in enumerate(act_per_layer_per_sent):
-                    dydx = directional_derivative(act, cav)
-                    
-                    if dydx: count += 1
-                    tcav = float(count)/float(len(act_per_layer_per_sent))
-                    word_tcav[str(ix)][concept].append((words[fx], tcav))
+        if word in words:
+            # since we are masking, it could be that the concept does not exist in the sentence, we let go of that sentence.
+            for ix in range(1, num_layers+1):
+                act_per_layer_per_sent = bottleneck_base[str(ix)][jx]
+                layer_cavs = concept_cavs[str(ix)]
+                for concept, cav in layer_cavs.items():
+                    word_tcav[str(ix)][concept] = []
+                    count = 0
+                    for fx, act in enumerate(act_per_layer_per_sent):
+                        dydx = directional_derivative(act, cav)
+                        
+                        if dydx: count += 1
+                        tcav = float(count)/float(len(act_per_layer_per_sent))
+                        word_tcav[str(ix)][concept].append((words[fx], tcav))
 
     return word_tcav
 
@@ -174,12 +196,38 @@ def get_specific_word_weightage(word_tcav, word_to_pick):
     for layer, word_concept_dict in word_tcav.items():
         word_weightage[layer] = {}
         for concept, word_weight_list in word_concept_dict.items():
-            
             for ix in word_weight_list:
                 word, weight = ix
                 if word == word:
                     word_weightage[layer][concept] = weight
     return word_weightage
+
+def run_for_chosen_word_write_to_csv(sentences, concept_cavs, bottleneck_base, num_layers, word):
+    """
+    Computes the TCAV for each word on [MASKED] sentences for each concept.
+
+    Arguments
+        sentences (dict): dict of [MASKED] sentences against each concept.
+        concept_cavs (dict): the dictionary of CAVs of each concept for every layer.
+        bottleneck_base (dict): the dictionary of base activations.
+        num_layers (int): the number of layers.
+        word (str): the word to get TCAVs for.
+    """
+
+    write_file = open("inference_word_mode.csv", "w")
+    write_file.write("Concept Masked" + "," + "Word" + "," + "Layer" + "," + "TCAV")
+    write_file.write("\n")
+
+    for concept_masked, sents in sentences.items(): # these are concept_wise masked sentences.
+        word_layer_wise_tcavs = compute_word_tcav(concept_cavs, bottleneck_base, sents, num_layers, word)
+        weight_dict = get_specific_word_weightage(word_layer_wise_tcavs, word)
+
+        for layers, concept_tcav_scores in weight_dict.items():
+            write_file.write(concept_masked + "," + word + "," + layers + "," + str(concept_tcav_scores) + "\n")
+            print(concept_masked + "," + word + "," + layers + "," + str(concept_tcav_scores))
+            print("="*50)
+    
+    write_file.close()
 
 def is_normality_shapiro(tcav_to_test):
     """
@@ -270,7 +318,7 @@ def word_layer_wise_plots(word_weightage, output_folder, word):
 
     gap = .8 / len(data)
 
-    plt.figure(figsize=(20,10))
+    plt.figure(figsize=(12,10))
     for i, row in enumerate(data):
         X = np.arange(len(row))
         rect = plt.bar(X + i * gap, row, width = gap, color = lst_of_colors[i])
@@ -281,7 +329,7 @@ def word_layer_wise_plots(word_weightage, output_folder, word):
     
     plt.ylabel("TCAV Scores")
     plt.title(f"TCAV Scores for each layer for word {word}")
-    plt.savefig(output_folder + f"{word}_all_layers.png")
+    plt.savefig(output_folder + f"/{word}_all_layers.png")
     
     plt.show()
     
@@ -318,33 +366,44 @@ def write_word_tcavs(output_path, word_layer_wise_tcavs):
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-b", "--base_acts_to_compute", 
+    parser.add_argument("-b", "--base_acts_to_compute",
         help="Path to base acts to compute the derivative and results against.")
-    parser.add_argument("-bs", "--base_sentences", 
+    parser.add_argument("-bs", "--base_sentences",
         help="Path to base sentences to compute the word TCAV.")
-    parser.add_argument("-c", "--concepts_cavs", 
+    parser.add_argument("-bl", "--base_labels",
+        help="Path to base labels.")
+    parser.add_argument("-c", "--concepts_cavs",
         help="The concept CAV pickle file computed.")
-    parser.add_argument("-r", "--randoms_cavs", 
+    parser.add_argument("-r", "--randoms_cavs",
         help="The random CAV pickle file computed for the t-test.")
     parser.add_argument("-o", "--output_directory",
         help="The output directory to store the results in.")
-    parser.add_argument("-m", "--compute_mode",
-        help="The compute mode to compute the TCAV in (w for word, s for sentence).")
+    parser.add_argument("-m", "--compute_mode", default="s",
+        help="The compute mode to compute the TCAV in (w for word, s for sentence, wm for testing for [MASK] only.).")
+    parser.add_argument("-w", "--word", default="[MASK]",
+        help="The word to compute the TCAVs for in w mode.")
 
     args = parser.parse_args()
     num_neurons = 768
-    word = "[MASK]"
 
     base_acts_to_compute = args.base_acts_to_compute
     base_sentences = args.base_sentences
+    base_labels = args.base_labels
     output_directory = args.output_directory
     compute_mode = args.compute_mode
+    word = args.word
 
     start = perf_counter()
+    
     concept_cavs = load_pickle_files(args.concepts_cavs)
     random_cavs = load_pickle_files(args.randoms_cavs)
-    sents = read_sentences(base_sentences)
     
+    sents = read_sentences(base_sentences)
+    base_labels = read_sentences(base_labels)
+
+    concepts_dict = get_concepts_dict(base_labels)
+    concepts2class = assign_labels_to_concepts(concepts_dict)
+
     base_acts, base_num_layers = data_loader.load_activations(base_acts_to_compute, num_neurons)
     bottleneck_base = segregate_acts_for_each_layer(base_acts, base_num_layers)
 
@@ -359,9 +418,13 @@ def main():
         concept_wise_bar_plots(layer_wise_tcavs, base_num_layers, output_directory)
         layer_wise_plots(layer_wise_tcavs, base_num_layers, output_directory)
 
-    elif compute_mode == "w":
+    elif compute_mode == "wm":
         print("Computing Word Level Results.")
-        word_layer_wise_tcavs = compute_word_tcav(concept_cavs, bottleneck_base, sents, base_num_layers)
+        masked_sents = mask_out_each_concept_in_base_sentences(sents, base_labels, list(concepts2class.values()))
+        run_for_chosen_word_write_to_csv(masked_sents, concept_cavs, bottleneck_base, base_num_layers, word)
+
+    elif compute_mode == "w":
+        word_layer_wise_tcavs = compute_word_tcav(concept_cavs, bottleneck_base, sents, base_num_layers, word)
         write_word_tcavs(output_directory, word_layer_wise_tcavs)
         weight_dict = get_specific_word_weightage(word_layer_wise_tcavs, word)
         word_layer_wise_plots(weight_dict, output_directory, word)

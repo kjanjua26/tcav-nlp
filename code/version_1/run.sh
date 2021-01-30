@@ -29,7 +29,7 @@ mkdir ../../../data/results/concept_wise
 echo "Computing TCAVs!"
 python compute_tcavs.py -b $base_activations -c $layer_wise_cav_pickle_path -r $layer_wise_cav_random_path -o $output_directory -bs $base_path -m $mode_tcav -w $word
 
-echo "Running the Demo!"
-#python demo/main.py
-
+# Other Mode Option:
+# python compute_tcavs.py -b "../../../data/dbase_activations.json" -c "../../../data/results/layer_wise_cavs.pickle" -r "../../../data/results/layer_wise_random_cavs.pickle" -o "../../../data/results" -bs "../../../data/dbase.txt" -bl "../../../data/dbase_labels.txt" -m "wm" -w "[MASK]"
 #python3.7 -m streamlit
+
