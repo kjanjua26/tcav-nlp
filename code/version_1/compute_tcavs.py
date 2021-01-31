@@ -2,11 +2,6 @@
     Compute the TCAVs for the given CAVs against each concept for each sentence in the base_data.txt.
     Use base_data_labels.txt for word analysis.
     Computes both ways: sentence TCAV and word TCAV.
-    
-    python compute_tcavs.py -b ../../../data/extractions-professions-mask.json -c ../../../data/results/layer_wise_cavs.pickle -r ../../../data/results/layer_wise_random_cavs.pickle -o ../../../data/results/
-
-    # real
-    python compute_tcavs.py -b ../../../data/extractions-professions-mask.json -c ../../../data/results/layer_wise_cavs.pickle -r ../../../data/results/layer_wise_random_cavs.pickle -o ../../../data/results/ -bs ../../../data/mask.txt -m "w"
 """
 
 import argparse, sys, os
@@ -15,7 +10,9 @@ import matplotlib.colors as colors
 from scipy import stats
 import pickle
 import numpy as np
+import pandas as pd
 from time import perf_counter
+from IPython.display import HTML
 from scipy.stats import shapiro
 from prepare_concepts import segregate_acts_for_each_layer, get_concepts_dict,  assign_labels_to_concepts
 from collections import defaultdict
@@ -202,7 +199,7 @@ def get_specific_word_weightage(word_tcav, word_to_pick):
                     word_weightage[layer][concept] = weight
     return word_weightage
 
-def run_for_chosen_word_write_to_csv(sentences, concept_cavs, bottleneck_base, num_layers, word):
+def run_for_chosen_word_write_to_csv(sentences, concept_cavs, bottleneck_base, num_layers, word, output_directory):
     """
     Computes the TCAV for each word on [MASKED] sentences for each concept.
 
@@ -214,20 +211,26 @@ def run_for_chosen_word_write_to_csv(sentences, concept_cavs, bottleneck_base, n
         word (str): the word to get TCAVs for.
     """
 
-    write_file = open("inference_word_mode.csv", "w")
-    write_file.write("Concept Masked" + "," + "Word" + "," + "Layer" + "," + "TCAV")
+    write_file_path = f"{output_directory}" + "/inference_word_mode.csv"
+
+    write_file = open(write_file_path, "w")
+    write_file.write("Concept_Masked" + "," + "Word" + "," + "Layer" + "," + "TCAV")
     write_file.write("\n")
 
     for concept_masked, sents in sentences.items(): # these are concept_wise masked sentences.
         word_layer_wise_tcavs = compute_word_tcav(concept_cavs, bottleneck_base, sents, num_layers, word)
         weight_dict = get_specific_word_weightage(word_layer_wise_tcavs, word)
+        word_layer_wise_plots(weight_dict, output_directory, word, concept_masked)
 
         for layers, concept_tcav_scores in weight_dict.items():
-            write_file.write(concept_masked + "," + word + "," + layers + "," + str(concept_tcav_scores) + "\n")
-            print(concept_masked + "," + word + "," + layers + "," + str(concept_tcav_scores))
+            write_file.write(concept_masked + "," + word + "," + layers + "," + str(concept_tcav_scores).replace(',', '-') + "\n")
+            print(concept_masked + "," + word + "," + layers + "," + str(concept_tcav_scores).replace(',', '-'))
             print("="*50)
     
     write_file.close()
+
+    # pretty-write the table to an HTML file.
+    re_format_the_csv_and_write_html(write_file_path, output_directory)
 
 def is_normality_shapiro(tcav_to_test):
     """
@@ -294,7 +297,7 @@ def concept_wise_bar_plots(layer_wise_tcavs, num_layers, output_folder):
         plt.savefig(output_folder + f"concept_wise/{k}.png")
         plt.close()
 
-def word_layer_wise_plots(word_weightage, output_folder, word):
+def word_layer_wise_plots(word_weightage, output_folder, word, concept_masked="default"):
     """
     Plot a specific word for each concept at each layer.
 
@@ -329,10 +332,92 @@ def word_layer_wise_plots(word_weightage, output_folder, word):
     
     plt.ylabel("TCAV Scores")
     plt.title(f"TCAV Scores for each layer for word {word}")
-    plt.savefig(output_folder + f"/{word}_all_layers.png")
+    plt.savefig(output_folder + f"/{concept_masked}_{word}_all_layers.png")
+
+def re_format_the_csv_and_write_html(csv_file, output_directory):
+    """
+    Prepares a multi-column csv file and writes to HTML files for better viewing.
+
+    Arguments
+        csv_file (str): the path to the written csv file.
+        output_directory (str): the path to write the HTML file to.
+    """
+    df_old = pd.read_csv(csv_file)
     
-    plt.show()
+    concepts = list(set(df_old["Concept_Masked"].tolist()))
+    layers = ["0"] + [str(x) for x in set(df_old["Layer"].tolist())]
+    tcav = df_old["TCAV"]
+
+    def reformat_df():
+        df = pd.DataFrame(columns=layers)
+        df[0] = concepts
+        df = df.set_index(0)
+        df = df.drop(columns=['0'])
+        return df
+
+    def re_index_df(df, df_old, num_layers):    
+        for jx in range(len(concepts)):
+            for ix in range(num_layers):
+                layer = layers[ix+1]
+                concept = concepts[jx]
+                cell = df_old.loc[df_old["Concept_Masked"] == concept, "TCAV"]
+                cell = cell.values[ix]
+                st = ""
+                for c in cell.split('-'):
+                    co, v = c.split(':')
+                    out_co = co.replace("'", "").replace("{", "") + " =" + v.replace("}", "")
+                    st += " " + out_co
+                df.loc[concept, layer] = st
+
+        return df
     
+    df = reformat_df()
+    df = re_index_df(df, df_old, 13)
+
+    unique_concepts = set(df_old["Concept_Masked"].tolist())
+    layers = [str(x) for x in set(df_old["Layer"].tolist())]
+
+    def format_for_multi_columns():
+        main_lst = defaultdict(dict)
+        for ix, t in enumerate(tcav):
+            layer = (ix%13)+1
+            cell = t.split("-")
+            d = []
+            concepts_tested = set()
+            for c in cell:
+                co, v = c.split(':')
+                out_co = co.replace("'", "").replace("{", "")
+                concepts_tested.add(out_co)
+                out_v = float(v.replace("}", "").strip())
+                d.append(out_v)
+            if layer not in main_lst.keys():
+                main_lst[layer] = []
+                main_lst[layer].append(d)
+            else:
+                main_lst[layer].append(d)
+
+        full = []
+        for ix in main_lst.keys():
+            full.append(main_lst[ix])
+            
+        full_np = np.array(full)
+        full_re_np = full_np.transpose(1, 0, 2) # it is (13, 33, 4) -> (33, 13, 4)
+        full_re_np = full_re_np.reshape(len(unique_concepts), len(concepts_tested) * len(layers))
+        return (full_re_np, list(concepts_tested))
+
+    def multi_column_df(concepts_tested):
+        midx = pd.MultiIndex.from_product([layers, concepts_tested])
+        df = pd.DataFrame(full_re_np, index=unique_concepts, columns=midx)
+        return df
+
+    full_re_np, concepts_tested = format_for_multi_columns()
+    df = multi_column_df(concepts_tested)
+    df_to_html = HTML(df.to_html())
+    html = df_to_html.data
+
+    with open(output_directory + '/html_file.html', 'w') as f:
+        f.write(html)
+
 def write_the_tcavs(output_path, layer_wise_tcavs, layer_wise_random_tcavs):
     """
     Write the computed CAVs (for both random and concept) in pickle files for further use.
@@ -421,7 +506,7 @@ def main():
     elif compute_mode == "wm":
         print("Computing Word Level Results.")
         masked_sents = mask_out_each_concept_in_base_sentences(sents, base_labels, list(concepts2class.values()))
-        run_for_chosen_word_write_to_csv(masked_sents, concept_cavs, bottleneck_base, base_num_layers, word)
+        run_for_chosen_word_write_to_csv(masked_sents, concept_cavs, bottleneck_base, base_num_layers, word, output_directory)
 
     elif compute_mode == "w":
         word_layer_wise_tcavs = compute_word_tcav(concept_cavs, bottleneck_base, sents, base_num_layers, word)
