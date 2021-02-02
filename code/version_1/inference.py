@@ -296,19 +296,19 @@ def run(model, base_corpus, base_labels, scores, class2labels, output_directory)
     dict_of_tcavs, concepts_tested = get_the_dict_of_tcavs_against_each_tested_concept(layer_13_df)
     
     for top_k in tqdm(top_ks):
-        #scores_dict_gt = score_tcavs_from_ground_truth(dict_of_tcavs, masked_out_sentences,
-                                #concepts_tested, top_k)
+        scores_dict_gt = score_tcavs_from_ground_truth(dict_of_tcavs, masked_out_sentences,
+                                concepts_tested, top_k)
                                 
-        #scores_dict_bert = check_how_accurate_BERT_prediction_tag_is(unmasker, masked_out_sentences,
-                                #dict_of_tcavs, concepts_tested, top_k=top_k)
+        scores_dict_bert = check_how_accurate_BERT_prediction_tag_is(unmasker, masked_out_sentences,
+                                dict_of_tcavs, concepts_tested, top_k=top_k)
         
         other_concepts_used_in_the_prediction_write_to_csv(unmasker, masked_out_sentences, dict_of_tcavs,
                                     concepts_tested, top_k, output_directory + f"/{top_k}_other_concepts_used.csv")
 
-        #results[f"experiment_gt_{top_k}"] = scores_dict_gt
-        #results[f"experiment_bert_{top_k}"] = scores_dict_bert
+        results[f"experiment_gt_{top_k}"] = scores_dict_gt
+        results[f"experiment_bert_{top_k}"] = scores_dict_bert
 
-    #write_to_json(results, output_directory + "/results.json")
+    write_to_json(results, output_directory + "/results.json")
 
 def main():
     parser = argparse.ArgumentParser()
