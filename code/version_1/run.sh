@@ -18,7 +18,7 @@ mode_tcav="wm"
 word="[MASK]"
 model="bert-base-uncased"
 
-inference_results="../../../paper_test/results/inference_word_mode.csv"
+inference_results="../../../${base_folder}/results/inference_word_mode.csv"
 
 echo "Extract Activations!"
 python extraction.py -m $model -i $concept_path -o $concept_activations -t "json"

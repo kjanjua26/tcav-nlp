@@ -7,6 +7,8 @@ import pandas as pd
 import numpy as np
 import argparse
 import json
+from tqdm import tqdm
+
 from prepare_concepts import get_concepts_dict
 from compute_tcavs import read_sentences, mask_out_each_concept_in_base_sentences
 
@@ -227,9 +229,9 @@ def other_concepts_used_in_the_prediction_write_to_csv(unmasker, masked_out_sent
     """
 
     fp = open(output_directory, "w")
-    fp.write("Concept_Tested" + "," + "Predicted_Sent" + "," + "Tagged_Word" + "," + "Concepts_Used" + "," + "Concepts_Confidence" + "," + "Masked_Sentence" + "," + "BERT_Confidence" + "\n")
+    fp.write("Concept_Tested" + "," + "Predicted_Sent" + "," + "Tagged_Word" + "," + "Concepts_Used" + "," + "TCAVs" + "," + "Masked_Sentence" + "," + "BERT_Confidence" + "\n")
 
-    for concept in concepts_tested:
+    for concept_tested in concepts_tested:
         masked_sents = masked_out_sentences[concept_tested]
         sent_len = 0
         count = 0
@@ -258,9 +260,7 @@ def other_concepts_used_in_the_prediction_write_to_csv(unmasker, masked_out_sent
                             max_tcav = {key: value for key, value in tcavs_of_tag.items() if value in sorted(set(tcavs_of_tag.values()), reverse=True)[:top_k]}
                             max_tcav_conps = ' '.join(list(max_tcav.keys()))
                             max_tcav_conf = ' '.join(str(x) for x in list(max_tcav.values()))
-                            fp.write(concept_tested + "," + pred_sent + "," + tagged_word + "," + max_tcav_conps + "," + max_tcav_conf + "," + sent + "," + str(conf_threshold) + "\n")
-                            #print('Concept Tested: ', concept_tested, '\nPredicted Sent: ', pred_sent, '\nTagged Word: ', tagged_word, '\nConcepts Used: ', max_tcav_conps, '\nConcepts Conf: ', max_tcav_conf,'\nMasked Sent: ', sent)
-                            #print("="*50)
+                            fp.write(concept_tested + "," + pred_sent.replace(',', '') + "," + tagged_word + "," + max_tcav_conps + "," + max_tcav_conf + "," + sent.replace(',', '') + "," + str(conf_threshold) + "\n")
     
     fp.close()
 
@@ -296,19 +296,19 @@ def run(model, base_corpus, base_labels, scores, class2labels, output_directory)
     dict_of_tcavs, concepts_tested = get_the_dict_of_tcavs_against_each_tested_concept(layer_13_df)
     
     for top_k in tqdm(top_ks):
-        scores_dict_gt = score_tcavs_from_ground_truth(dict_of_tcavs, masked_out_sentences,
-                                concepts_tested, top_k)
+        #scores_dict_gt = score_tcavs_from_ground_truth(dict_of_tcavs, masked_out_sentences,
+                                #concepts_tested, top_k)
                                 
-        scores_dict_bert = check_how_accurate_BERT_prediction_tag_is(unmasker, masked_out_sentences,
-                                dict_of_tcavs, concepts_tested, top_k=top_k)
+        #scores_dict_bert = check_how_accurate_BERT_prediction_tag_is(unmasker, masked_out_sentences,
+                                #dict_of_tcavs, concepts_tested, top_k=top_k)
         
         other_concepts_used_in_the_prediction_write_to_csv(unmasker, masked_out_sentences, dict_of_tcavs,
                                     concepts_tested, top_k, output_directory + f"/{top_k}_other_concepts_used.csv")
 
-        results[f"experiment_gt_{top_k}"] = scores_dict_gt
-        results[f"experiment_bert_{top_k}"] = scores_dict_bert
+        #results[f"experiment_gt_{top_k}"] = scores_dict_gt
+        #results[f"experiment_bert_{top_k}"] = scores_dict_bert
 
-    write_to_json(results, output_directory + "/results.json")
+    #write_to_json(results, output_directory + "/results.json")
 
 def main():
     parser = argparse.ArgumentParser()
