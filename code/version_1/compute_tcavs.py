@@ -205,7 +205,7 @@ def get_specific_word_weightage(word_tcav, word_to_pick):
                     word_weightage[layer][concept] = weight
     return word_weightage
 
-def run_for_chosen_word_write_to_csv(sentences, concept_cavs, bottleneck_base, num_layers, word, output_directory):
+def run_for_chosen_word_write_to_pickle(sentences, concept_cavs, bottleneck_base, num_layers, word, output_directory):
     """
     Computes the TCAV for each word on [MASKED] sentences for each concept.
 

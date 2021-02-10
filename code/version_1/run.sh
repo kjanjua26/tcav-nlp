@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 base_folder="paper_test"
 concept_path="../../../${base_folder}/dconcept.in"
 concept_labels="../../../${base_folder}/dconcept_labels.in"
@@ -25,7 +26,7 @@ python extraction.py -m $model -i $concept_path -o $concept_activations -t "json
 python extraction.py -m $model -i $base_path -o $base_activations -t "json"
 
 echo "Prepare Concepts and Training CAVs!"
-python prepare_concepts.py -i $concept_labels -l $concept_labels -e $concept_activations -c "DT NNS CC JJ" -o $output_directory
+python prepare_concepts.py -i $concept_path -l $concept_labels -e $concept_activations -c "DT NNS CC JJ" -o $output_directory
 
 echo "Making Directories to Store Results!"
 mkdir ../../../${base_folder}/results/layer_wise
