@@ -18,7 +18,7 @@ mode_tcav="wm"
 word="[MASK]"
 model="bert-base-uncased"
 
-inference_results="../../../${base_folder}/results/inference_word_mode.csv"
+inference_results="../../../${base_folder}/results/inference_word_mode.pickle"
 
 echo "Extract Activations!"
 python extraction.py -m $model -i $concept_path -o $concept_activations -t "json"
@@ -34,8 +34,8 @@ mkdir ../../../${base_folder}/results/concept_wise
 echo "Computing TCAVs!"
 python compute_tcavs.py -b $base_activations -c $layer_wise_cav_pickle_path -r $layer_wise_cav_random_path -o $output_directory -bs $base_path -bl $base_labels -m $mode_tcav -w $word
 
-echo "Scoring the results now."
-python inference.py -m $model -b $base_path -l $base_labels -s $inference_results -o $output_directory
+#echo "Scoring the results now."
+#python inference.py -m $model -b $base_path -l $base_labels -s $inference_results -o $output_directory
 
 # Other Mode Option:
 #python compute_tcavs.py -b $base_activations -c $layer_wise_cav_pickle_path -r $layer_wise_cav_random_path -o $output_directory -bs $base_path -m $mode_tcav -w $word

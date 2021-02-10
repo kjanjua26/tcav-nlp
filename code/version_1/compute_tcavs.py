@@ -505,7 +505,7 @@ def main():
     elif compute_mode == "wm":
         print("Computing Word Level Results.")
         masked_sents = mask_out_each_concept_in_base_sentences(sents, base_labels, list(concepts2class.values()))
-        run_for_chosen_word_write_to_csv(masked_sents, concept_cavs, bottleneck_base, base_num_layers, word, output_directory)
+        run_for_chosen_word_write_to_pickle(masked_sents, concept_cavs, bottleneck_base, base_num_layers, word, output_directory)
 
     elif compute_mode == "w":
         word_layer_wise_tcavs = compute_word_tcav(concept_cavs, bottleneck_base, sents, base_num_layers, word)
