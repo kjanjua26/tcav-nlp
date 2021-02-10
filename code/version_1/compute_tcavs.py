@@ -101,6 +101,8 @@ def compute_sentence_tcav(concept_cav_per_layer, random_cav_per_layer, bottlenec
             print(f"For Concept - {concept}")
             count = 0
             for ix, acts in enumerate(bottleneck_base_per_layer):
+                # acts => (no_words, 768)
+                # cav => (768, )
                 for ft in acts:
                     dydx = directional_derivative(ft, cav)
                     if dydx: count += 1
@@ -144,6 +146,8 @@ def run_sent(concept_cavs, random_cavs, bottleneck_base):
 
 def compute_word_tcav(concept_cavs, bottleneck_base, sentences, num_layers, word):
     """
+    TODO: This is wrong.
+
     Compute TCAV scores for a given CAV of a concept and every word in each sentence in the base corpus.
 
     Arguments
@@ -158,25 +162,27 @@ def compute_word_tcav(concept_cavs, bottleneck_base, sentences, num_layers, word
 
     word_tcav = defaultdict(dict)
     word_tcav = {str(k): {} for k in range(1, num_layers+1)}
-    
-    for jx, sent in enumerate(sentences):
-        words = list(sent.split(' '))
-        if word in words:
-            # since we are masking, it could be that the concept does not exist in the sentence, we let go of that sentence.
-            for ix in range(1, num_layers+1):
+   
+    for ix in range(1, num_layers+1):
+        layer_cavs = concept_cavs[str(ix)]
+        for concept, cav in layer_cavs.items():
+            word_tcav[str(ix)][concept] = []
+            count = 0
+            for jx, sent in enumerate(sentences):
                 act_per_layer_per_sent = bottleneck_base[str(ix)][jx]
-                layer_cavs = concept_cavs[str(ix)]
-                for concept, cav in layer_cavs.items():
-                    word_tcav[str(ix)][concept] = []
-                    count = 0
-                    for fx, act in enumerate(act_per_layer_per_sent):
-                        dydx = directional_derivative(act, cav)
-                        
-                        if dydx: count += 1
-                        tcav = float(count)/float(len(act_per_layer_per_sent))
-                        word_tcav[str(ix)][concept].append((words[fx], tcav))
+                words = list(sent.split(' '))
+                if word in words:
+                    selected_word_index = words.index(word)
+                    selected_word_acts = act_per_layer_per_sent[selected_word_index]
+                    dydx = directional_derivative(selected_word_acts, cav)
+                    if dydx: count += 1
+
+            tcav = float(count)/float(len(sentences))
+            word_tcav[str(ix)][concept].append((word, tcav))
 
     return word_tcav
+
+
 
 def get_specific_word_weightage(word_tcav, word_to_pick):
     """
@@ -211,26 +217,19 @@ def run_for_chosen_word_write_to_csv(sentences, concept_cavs, bottleneck_base, n
         word (str): the word to get TCAVs for.
     """
 
-    write_file_path = f"{output_directory}" + "/inference_word_mode.csv"
-
-    write_file = open(write_file_path, "w")
-    write_file.write("Concept_Masked" + "," + "Word" + "," + "Layer" + "," + "TCAV")
-    write_file.write("\n")
+    write_file_path = f"{output_directory}" + "/inference_word_mode.pickle"    
+    concept_masked_tcav_dict = defaultdict(dict)
 
     for concept_masked, sents in sentences.items(): # these are concept_wise masked sentences.
         word_layer_wise_tcavs = compute_word_tcav(concept_cavs, bottleneck_base, sents, num_layers, word)
-        weight_dict = get_specific_word_weightage(word_layer_wise_tcavs, word)
-        word_layer_wise_plots(weight_dict, output_directory, word, concept_masked)
-
-        for layers, concept_tcav_scores in weight_dict.items():
-            write_file.write(concept_masked + "," + word + "," + layers + "," + str(concept_tcav_scores).replace(',', '-') + "\n")
-            print(concept_masked + "," + word + "," + layers + "," + str(concept_tcav_scores).replace(',', '-'))
-            print("="*50)
+        concept_masked_tcav_dict[concept_masked] = word_layer_wise_tcavs
     
-    write_file.close()
+    # write to pickle file.
+    with open(write_file_path, "wb") as writer:
+        pickle.dump(concept_masked_tcav_dict, writer)
 
     # pretty-write the table to an HTML file.
-    re_format_the_csv_and_write_html(write_file_path, output_directory)
+    #re_format_the_csv_and_write_html(write_file_path, output_directory)
 
 def is_normality_shapiro(tcav_to_test):
     """
