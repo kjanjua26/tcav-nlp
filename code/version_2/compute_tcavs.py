@@ -113,7 +113,6 @@ def compute_word_tcav(concept_cavs, bottleneck_base,
             for run in range(num_of_runs):
                 count = 0
                 for cav_key, cav in cavs_of_runs[run].items():
-                    #print(cav_key)
                     for jx, sent in enumerate(sentences):
                         act_per_layer_per_sent = bottleneck_base[str(ix)][jx]
                         words = list(sent.split(' '))
@@ -125,13 +124,11 @@ def compute_word_tcav(concept_cavs, bottleneck_base,
                                 count += 1
 
                     tcav = float(count)/float(len(sentences))
-                    print(f"Layer - {ix} CAV - {cav_key} TCAV - {tcav}")
                     tcavs_per_run.append(tcav)
         
             max_tcav = max(tcavs_per_run)
             mean_tcav = np.mean(tcavs_per_run)
 
-            print(f"[INFO] Concept - {concept} Mean - {mean_tcav} Max - {max_tcav}")
             if abs(max_tcav - mean_tcav) <= 0.05:
                 check_for_spurious_cavs[concept] = max_tcav
             else:
