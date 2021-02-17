@@ -138,7 +138,7 @@ def modify_labels_according_to_concept(tokens, activations, idx):
     # mask all others to '0'
     for ix, sentence in enumerate(source):
         labels = targets[ix]
-        labels = [1 if x == idx else 0 for x in labels]
+        labels = ['1' if x == idx else '0' for x in labels]
         tokens_up["source"].append(sentence)
         tokens_up["target"].append(labels)
                     
@@ -274,16 +274,15 @@ def run_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
     Returns
         cavs_for_layers (dict): the dictionary containing cav of each concept for a layer.
     """
-    
+    concept_cavs = {}
+
     for _, concept in concepts2class.items():
         print(f"[INFO] Concept - {concept}")
-        
-        # train CAV for the actual data.
         toks = modify_labels_according_to_concept(bottleneck_tokens, bottleneck_concept_acts_per_layer, concept) # pass in the concept token vector
         X, y, _ = utils.create_tensors(toks, bottleneck_concept_acts_per_layer, concept)
         X_concept, y_concept, X_other, y_other = get_x_y_of_concept(X, y)
 
-        X, y, cav_keys, model_types = [], [], [], []
+        X, y, cav_keys, model_types = [], [], [], []  # maintain lists to parallelize the run.
 
         for run in range(no_of_runs):
             index = get_random_index(X_other.shape[0], len(X_concept))
@@ -296,11 +295,12 @@ def run_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
             y.append(y_)
             cav_keys.append(cav_key)
             model_types.append(model_type)
-
+        
         pool = ProcessingPool(num_workers)
         cavs_for_layers = pool.map(parallelized_nrof_runs, X, y, cav_keys, model_types)
+        concept_cavs[concept] = cavs_for_layers
 
-    return cavs_for_layers
+    return concept_cavs
 
 def run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_workers, no_of_runs):
     """
@@ -317,7 +317,7 @@ def run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_w
     layer_wise_cavs = {}
 
     for layer, bottleneck_acts_per_layer in concept_bottleneck.items():
-        print(f"For layer - {layer}")
+        print(f"[INFO] For layer - {layer}")
         token_bottleneck = tokens_bottleneck[layer]
 
         cavs_for_layer = run_for_each_layer(layer, bottleneck_acts_per_layer, 

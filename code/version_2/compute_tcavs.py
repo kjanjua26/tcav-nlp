@@ -101,14 +101,13 @@ def compute_word_tcav(concept_cavs, bottleneck_base,
     word_tcav = defaultdict(dict)
     word_tcav = {str(k): {} for k in range(1, num_layers+1)}
     
-
     for ix in range(1, num_layers+1):
         
         check_for_spurious_cavs = {}
         layer_cavs = concept_cavs[str(ix)]
+
         for concept, cavs_of_runs in layer_cavs.items():
             print(f"[INFO] Test Concept - {concept}")
-            
             tcavs_per_run = []
             for run in range(num_of_runs):
                 count = 0
@@ -124,18 +123,19 @@ def compute_word_tcav(concept_cavs, bottleneck_base,
                                 count += 1
 
                     tcav = float(count)/float(len(sentences))
+                    print(f"[INFO] Concept - {concept} Layer - {ix} TCAV - {tcav} Run - {run} CAV Key - {cav_key}")
                     tcavs_per_run.append(tcav)
         
             max_tcav = max(tcavs_per_run)
-            mean_tcav = np.mean(tcavs_per_run)
+            #mean_tcav = np.mean(tcavs_per_run)
 
-            if abs(max_tcav - mean_tcav) <= 0.05:
-                check_for_spurious_cavs[concept] = max_tcav
-            else:
-                check_for_spurious_cavs[concept] = 0.0
+            #if abs(max_tcav - mean_tcav) <= 0.05:
+            check_for_spurious_cavs[concept] = max_tcav
+            #else:
+            #    check_for_spurious_cavs[concept] = 0.0
         
         word_tcav[str(ix)] = check_for_spurious_cavs
-    
+
     return word_tcav
 
 def run_for_chosen_word_write_to_pickle(sentences, concept_cavs,
@@ -156,7 +156,7 @@ def run_for_chosen_word_write_to_pickle(sentences, concept_cavs,
     concept_masked_tcav_dict = defaultdict(dict)
 
     for concept_masked, sents in sentences.items(): # these are concept_wise masked sentences.
-        if concept_masked in list(concept_cavs["1"].keys()):
+        if concept_masked in ["JJ", "NN"]:
             print(f"[INFO] Masked Concept - {concept_masked}")
             word_layer_wise_tcavs = compute_word_tcav(concept_cavs, bottleneck_base, sents, num_layers, word, num_of_runs)
             concept_masked_tcav_dict[concept_masked] = word_layer_wise_tcavs
@@ -202,7 +202,7 @@ def main():
     #start = perf_counter()
     
     concept_cavs = load_pickle_files(args.concepts_cavs)
-    
+
     sents = read_sentences(base_sentences)
     base_labels = read_sentences(base_labels)
 
