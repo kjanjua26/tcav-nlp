@@ -183,7 +183,7 @@ def compute_word_tcav(concept_cavs, bottleneck_base,
                         print(f"[INFO] The actual label was {gold_label} and the tag of prediction is {tag_of_prediction}.")
                         
                         if tag_of_prediction == gold_label:
-                            accuracy_of_tag_preds += 1
+                            score_of_tag_preds += 1
                             if word in words:
                                 selected_word_index = words.index(word)
                                 selected_word_acts = act_per_layer_per_sent[selected_word_index]
