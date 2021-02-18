@@ -15,6 +15,7 @@ from time import perf_counter
 import random
 import pickle
 from pathos.multiprocessing import ProcessingPool
+from sklearn.utils import shuffle
 
 def read_file(fp):
     """
@@ -288,8 +289,13 @@ def run_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
             index = get_random_index(X_other.shape[0], len(X_concept))
             X_other = X_other[index]
             y_other = y_other[index]
+            
             X_ = np.concatenate((X_concept, X_other))
             y_ = np.concatenate((y_concept, y_other))
+            
+            # shuffle the two lists.
+            X_, y_ = shuffle(X_, y_)
+
             cav_key = get_cav_key(run, concept, layerno)
             X.append(X_)
             y.append(y_)
