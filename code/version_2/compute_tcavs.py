@@ -170,12 +170,11 @@ def compute_word_tcav(concept_cavs, bottleneck_base,
             
             for run in range(num_of_runs):
                 count = 0
-                accuracy_of_tag_preds = 0
+                score_of_tag_preds = 0
                 total = 0
 
                 for cav_key, cav in cavs_of_runs[run].items():
                     for jx, sent in enumerate(sentences):
-                        total += 1
                         pred_sent, pred_token, pred_score = get_top_prediction_from_unmasker(sent, model_type)
                         print(f"[INFO] Model {model_type} predicted {pred_token} in place of [MASK] with conf. score of {pred_score}.")
                         tag_of_prediction = get_pos_label_for_MASK(pred_sent, pred_token)
@@ -192,9 +191,9 @@ def compute_word_tcav(concept_cavs, bottleneck_base,
                                 if dydx:
                                     count += 1
 
-                    tcav = float(count)/float(len(sentences))
+                    tcav = float(count)/float(score_of_tag_preds)
                     tcavs_per_run.append(tcav)
-                    accuracy = accuracy_of_tag_preds/total
+                    accuracy = score_of_tag_preds/len(sentences)
 
                     print(f"[INFO] Concept {concept} Layer {ix} TCAV {tcav} Run {run} CAV Key {cav_key}.")
                     print(f"Run {run}, the Concept {concept} achieved an accuracy of {accuracy}.")
