@@ -207,7 +207,7 @@ def compute_word_tcav(concept_cavs, random_cavs,
                         words = list(sent.split(' '))
                         if word in words:
                             pred_sent, pred_token, pred_score = get_top_prediction_from_unmasker(unmasker, sent)
-                            print(f"[INFO] Model {model_type} predicted {pred_token} in place of [MASK] with conf. score of {pred_score}.")
+                            print(f"[INFO] Model {model_type} predicted {pred_token} in place of [MASK] with conf. score of {round(pred_score, 3)}.")
                             tag_of_prediction = get_pos_label_for_MASK(pred_sent, pred_token)
                             act_per_layer_per_sent = bottleneck_base[str(ix)][jx]
                             
@@ -231,18 +231,17 @@ def compute_word_tcav(concept_cavs, random_cavs,
                     
                     tcavs_per_run.append(tcav)
                     random_tcavs_per_run.append(r_tcav)
-
-                    print(f"[INFO] TCAVs - {tcavs_per_run}")
-                    print(f"[INFO] Random TCAVs - {random_tcavs_per_run}")
                     accuracy = score_of_tag_preds/len(sentences)
 
-                    print(f"Run {run}, the Concept {concept} achieved an accuracy (tag matching with gt) of {accuracy}.")
+                    print(f"For run {run}, the concept {concept} achieved an accuracy (tag matching with gt) of {accuracy}.")
                     
+            
+            print(f"[INFO] TCAVs - {tcavs_per_run}.")
+            print(f"[INFO] Random TCAVs - {random_tcavs_per_run}.")
+            
             # perform the t-test here and then proceed.
-            print(tcavs_per_run)
-            print(random_tcavs_per_run)
             p = t_test(tcavs_per_run, random_tcavs_per_run)
-            print(f"[INFO] For Concept {concept}, the p-value is {p}")
+            print(f"[INFO] For Concept {concept}, the p-value is {p}.")
 
             # apply the bonferroni correction and check if the p_value is still less.
             to_accept = apply_bonferroni_correction(num_of_runs, p)
