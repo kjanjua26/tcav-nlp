@@ -253,7 +253,7 @@ def parallelized_nrof_runs(X, y, cav_key, model, process_type):
     """
     cavs_for_layers = {}
     cav, accuracy = cavs.run(X, y, model_type=model)
-    print(f"[INFO] Test Accuracy - {accuracy} for CAV - {cav_key}")
+    print(f"[INFO] Test Accuracy - {%.3f} for CAV - {cav_key}" % accuracy)
     
     if process_type == "main":
         if accuracy > 0.8:
@@ -330,7 +330,7 @@ def run_random_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
         concepts2class (dict): the concepts.
         model_type (str): the type of the model.
         num_workers (int): the number of workers for parallelizing.
-        no_of_runs (int): the number of runs. 
+        no_of_runs (int): the number of runs.
     Returns
         random_concept_cavs (dict): the dictionary containing random CAV for each concept for a layer.
     """
@@ -351,7 +351,7 @@ def run_random_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
             y_random = y_other[random_index]
 
             X_other_ = X_other[index]
-            y_other_ = np.ones_like(y_random) #y_other[index]
+            y_other_ = np.ones_like(y_random)
 
             X_ = np.concatenate((X_random, X_other_))
             y_ = np.concatenate((y_random, y_other_))
@@ -369,7 +369,7 @@ def run_random_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
 
         pool_r = ProcessingPool(num_workers)
         random_cavs_for_layers = pool_r.map(parallelized_nrof_runs, X, y, cav_keys, model_types, ops_type)
-        
+
         random_concept_cavs[concept] = random_cavs_for_layers
 
     return random_concept_cavs

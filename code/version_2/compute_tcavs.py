@@ -22,6 +22,7 @@ from collections import defaultdict
 from transformers import pipeline
 import nltk
 from nltk.tokenize import word_tokenize
+from scipy import stats
 
 def load_pickle_files(pickled_file):
     """
@@ -58,7 +59,7 @@ def get_model_unmasker(model_type):
     unmasker = pipeline('fill-mask', model=model_type)
     return unmasker
 
-def get_top_prediction_from_unmasker(sent, model_type):
+def get_top_prediction_from_unmasker(unmasker, sent):
     """
     Passes the sentence to the unmasker model and returns the prediction.
 
@@ -71,7 +72,6 @@ def get_top_prediction_from_unmasker(sent, model_type):
         pred_token (str): the predicted token against MASK.
         pred_score (float): the score of the prediction.
     """
-    unmasker = get_model_unmasker(model_type)
     top_pred = unmasker(sent)[0]
    
     pred_sent = top_pred['sequence']
@@ -140,6 +140,14 @@ def mask_out_each_concept_in_base_sentences(sents, base_labels, concepts):
         
     return sents_masked
 
+def t_test(tcavs, r_tcavs):
+    """
+    Computes the t-test between two distributions.
+    """
+    _, p = stats.ttest_ind(tcavs, r_tcavs)
+    return p
+
+
 def compute_word_tcav(concept_cavs, random_cavs,
                       bottleneck_base,
                       sentences, num_layers, word,
@@ -160,7 +168,8 @@ def compute_word_tcav(concept_cavs, random_cavs,
 
     word_tcav = defaultdict(dict)
     word_tcav = {str(k): {} for k in range(1, num_layers+1)}
-    
+    unmasker = get_model_unmasker(model_type)
+
     for ix in range(1, num_layers+1):
         
         check_for_spurious_cavs = {}
@@ -172,7 +181,7 @@ def compute_word_tcav(concept_cavs, random_cavs,
             random_tcavs_per_run = []
             random_layer_cavs_per_concept = random_layer_cavs[concept]
 
-            for run in range(1):
+            for run in range(num_of_runs):
                 count = 0
                 random_count = 0
                 score_of_tag_preds = 0
@@ -184,7 +193,7 @@ def compute_word_tcav(concept_cavs, random_cavs,
                     for jx, sent in enumerate(sentences):
                         words = list(sent.split(' '))
                         if word in words:
-                            pred_sent, pred_token, pred_score = get_top_prediction_from_unmasker(sent, model_type)
+                            pred_sent, pred_token, pred_score = get_top_prediction_from_unmasker(unmasker, sent)
                             print(f"[INFO] Model {model_type} predicted {pred_token} in place of [MASK] with conf. score of {pred_score}.")
                             tag_of_prediction = get_pos_label_for_MASK(pred_sent, pred_token)
                             act_per_layer_per_sent = bottleneck_base[str(ix)][jx]
@@ -198,6 +207,7 @@ def compute_word_tcav(concept_cavs, random_cavs,
                                 selected_word_acts = act_per_layer_per_sent[selected_word_index]
                                 dydx = directional_derivative(selected_word_acts, cav)
                                 r_dydx = directional_derivative(selected_word_acts, random_cav)
+                                
                                 if dydx:
                                     count += 1
                                 if r_dydx:
@@ -211,7 +221,7 @@ def compute_word_tcav(concept_cavs, random_cavs,
                     print(f"[INFO] TCAVs - {tcavs_per_run}")
                     print(f"[INFO] Random TCAVs - {random_tcavs_per_run}")
                     # perform the testing here.
-
+                    t_test(tcavs_per_run, random_tcavs_per_run)
                     accuracy = score_of_tag_preds/len(sentences)
 
                     print(f"[INFO] Concept {concept} Layer {ix} TCAV {tcav} Run {run} CAV Key {cav_key}.")
@@ -220,16 +230,12 @@ def compute_word_tcav(concept_cavs, random_cavs,
             # perform the t-test here and then proceed.
             print(tcavs_per_run)
             print(random_tcavs_per_run)
+            p = t_test(tcavs_per_run, random_tcavs_per_run)
+            print(f"[INFO] For Concept {concept}, the p-value is {p}")
+            if p < 0.005:
+                check_for_spurious_cavs[concept] = np.mean(tcavs_per_run)
             exit()
-
-            max_tcav = max(tcavs_per_run)
-            #mean_tcav = np.mean(tcavs_per_run)
-
-            #if abs(max_tcav - mean_tcav) <= 0.05:
-            check_for_spurious_cavs[concept] = max_tcav
-            #else:
-            #    check_for_spurious_cavs[concept] = 0.0
-        
+          
         word_tcav[str(ix)] = check_for_spurious_cavs
 
     return word_tcav
