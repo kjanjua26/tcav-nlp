@@ -253,7 +253,7 @@ def parallelized_nrof_runs(X, y, cav_key, model, process_type):
     """
     cavs_for_layers = {}
     cav, accuracy = cavs.run(X, y, model_type=model)
-    print(f"[INFO] Test Accuracy - {%.3f} for CAV - {cav_key}" % accuracy)
+    print(f"[INFO] Test Accuracy - {accuracy} for CAV - {cav_key}")
     
     if process_type == "main":
         if accuracy > 0.8:

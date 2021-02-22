@@ -17,7 +17,7 @@ import pandas as pd
 from time import perf_counter
 from IPython.display import HTML
 from scipy.stats import shapiro
-from prepare_concepts import segregate_acts_for_each_layer, get_concepts_dict,  assign_labels_to_concepts
+from prepare_concepts import segregate_acts_for_each_layer, get_concepts_dict, assign_labels_to_concepts
 from collections import defaultdict
 from transformers import pipeline
 import nltk
@@ -147,6 +147,19 @@ def t_test(tcavs, r_tcavs):
     _, p = stats.ttest_ind(tcavs, r_tcavs)
     return p
 
+def apply_bonferroni_correction(num_of_runs, p):
+    """
+    Apply the Bonferroni correction and check whether to accept or not.
+
+    Arguments
+        num_of_runs (int): the number of runs.
+        p (float): the computed p-value using t-test.
+    Returns
+        to_accept (bool): whether to accept the result or not.
+    """
+    default = 0.05 # the base value to reject the null-hypothesis.
+    alpha = float(default)/float(num_of_runs)
+    return p <= alpha
 
 def compute_word_tcav(concept_cavs, random_cavs,
                       bottleneck_base,
@@ -218,13 +231,11 @@ def compute_word_tcav(concept_cavs, random_cavs,
                     
                     tcavs_per_run.append(tcav)
                     random_tcavs_per_run.append(r_tcav)
+
                     print(f"[INFO] TCAVs - {tcavs_per_run}")
                     print(f"[INFO] Random TCAVs - {random_tcavs_per_run}")
-                    # perform the testing here.
-                    t_test(tcavs_per_run, random_tcavs_per_run)
                     accuracy = score_of_tag_preds/len(sentences)
 
-                    print(f"[INFO] Concept {concept} Layer {ix} TCAV {tcav} Run {run} CAV Key {cav_key}.")
                     print(f"Run {run}, the Concept {concept} achieved an accuracy (tag matching with gt) of {accuracy}.")
                     
             # perform the t-test here and then proceed.
@@ -232,10 +243,13 @@ def compute_word_tcav(concept_cavs, random_cavs,
             print(random_tcavs_per_run)
             p = t_test(tcavs_per_run, random_tcavs_per_run)
             print(f"[INFO] For Concept {concept}, the p-value is {p}")
-            if p < 0.005:
+
+            # apply the bonferroni correction and check if the p_value is still less.
+            to_accept = apply_bonferroni_correction(num_of_runs, p)
+            
+            if to_accept: # the test is passed.
                 check_for_spurious_cavs[concept] = np.mean(tcavs_per_run)
-            exit()
-          
+
         word_tcav[str(ix)] = check_for_spurious_cavs
 
     return word_tcav
