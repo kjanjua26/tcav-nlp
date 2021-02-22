@@ -73,7 +73,7 @@ def get_top_prediction_from_unmasker(sent, model_type):
     """
     unmasker = get_model_unmasker(model_type)
     top_pred = unmasker(sent)[0]
-    
+   
     pred_sent = top_pred['sequence']
     pred_score = top_pred['score']
     pred_token = top_pred['token_str']
@@ -105,7 +105,7 @@ def directional_derivative(ft, cav):
     Arguments
         ft (np.array): the ft vector.
         cav (np.array): the computed CAV.
-    
+
     Returns:
         bool value: if < 0.
     """
@@ -140,7 +140,8 @@ def mask_out_each_concept_in_base_sentences(sents, base_labels, concepts):
         
     return sents_masked
 
-def compute_word_tcav(concept_cavs, bottleneck_base,
+def compute_word_tcav(concept_cavs, random_cavs,
+                      bottleneck_base,
                       sentences, num_layers, word,
                       num_of_runs, model_type, gold_label):
     """
@@ -164,41 +165,63 @@ def compute_word_tcav(concept_cavs, bottleneck_base,
         
         check_for_spurious_cavs = {}
         layer_cavs = concept_cavs[str(ix)]
+        random_layer_cavs = random_cavs[str(ix)]
 
         for concept, cavs_of_runs in layer_cavs.items():
             tcavs_per_run = []
-            
-            for run in range(num_of_runs):
+            random_tcavs_per_run = []
+            random_layer_cavs_per_concept = random_layer_cavs[concept]
+
+            for run in range(1):
                 count = 0
+                random_count = 0
                 score_of_tag_preds = 0
-                total = 0
 
                 for cav_key, cav in cavs_of_runs[run].items():
+                    random_cav = random_layer_cavs_per_concept[run]["r-"+cav_key]
+
+
                     for jx, sent in enumerate(sentences):
-                        pred_sent, pred_token, pred_score = get_top_prediction_from_unmasker(sent, model_type)
-                        print(f"[INFO] Model {model_type} predicted {pred_token} in place of [MASK] with conf. score of {pred_score}.")
-                        tag_of_prediction = get_pos_label_for_MASK(pred_sent, pred_token)
-                        act_per_layer_per_sent = bottleneck_base[str(ix)][jx]
                         words = list(sent.split(' '))
-                        print(f"[INFO] The actual label was {gold_label} and the tag of prediction is {tag_of_prediction}.")
-                        
-                        if tag_of_prediction == gold_label:
-                            score_of_tag_preds += 1
-                            if word in words:
+                        if word in words:
+                            pred_sent, pred_token, pred_score = get_top_prediction_from_unmasker(sent, model_type)
+                            print(f"[INFO] Model {model_type} predicted {pred_token} in place of [MASK] with conf. score of {pred_score}.")
+                            tag_of_prediction = get_pos_label_for_MASK(pred_sent, pred_token)
+                            act_per_layer_per_sent = bottleneck_base[str(ix)][jx]
+                            
+                            print(f"[INFO] The actual label was {gold_label} and the tag of prediction is {tag_of_prediction}.")
+                            
+                            if tag_of_prediction == gold_label:
+                                score_of_tag_preds += 1
+                                
                                 selected_word_index = words.index(word)
                                 selected_word_acts = act_per_layer_per_sent[selected_word_index]
                                 dydx = directional_derivative(selected_word_acts, cav)
+                                r_dydx = directional_derivative(selected_word_acts, random_cav)
                                 if dydx:
                                     count += 1
+                                if r_dydx:
+                                    random_count += 1
 
                     tcav = float(count)/float(score_of_tag_preds)
+                    r_tcav = float(random_count)/float(score_of_tag_preds)
+                    
                     tcavs_per_run.append(tcav)
+                    random_tcavs_per_run.append(r_tcav)
+                    print(f"[INFO] TCAVs - {tcavs_per_run}")
+                    print(f"[INFO] Random TCAVs - {random_tcavs_per_run}")
+                    # perform the testing here.
+
                     accuracy = score_of_tag_preds/len(sentences)
 
                     print(f"[INFO] Concept {concept} Layer {ix} TCAV {tcav} Run {run} CAV Key {cav_key}.")
-                    print(f"Run {run}, the Concept {concept} achieved an accuracy of {accuracy}.")
+                    print(f"Run {run}, the Concept {concept} achieved an accuracy (tag matching with gt) of {accuracy}.")
                     
-        
+            # perform the t-test here and then proceed.
+            print(tcavs_per_run)
+            print(random_tcavs_per_run)
+            exit()
+
             max_tcav = max(tcavs_per_run)
             #mean_tcav = np.mean(tcavs_per_run)
 
@@ -211,7 +234,7 @@ def compute_word_tcav(concept_cavs, bottleneck_base,
 
     return word_tcav
 
-def run_for_chosen_word_write_to_pickle(sentences, concept_cavs,
+def run_for_chosen_word_write_to_pickle(sentences, concept_cavs, random_cavs,
                                         bottleneck_base, num_layers,
                                         word, output_directory, num_of_runs, model_type):
     """
@@ -234,7 +257,7 @@ def run_for_chosen_word_write_to_pickle(sentences, concept_cavs,
     for concept_masked, sents in sentences.items(): # these are concept_wise masked sentences.
         if concept_masked in ["JJ", "NN"]:
             print(f"[INFO] Masked Concept - {concept_masked}")
-            word_layer_wise_tcavs = compute_word_tcav(concept_cavs, bottleneck_base, sents, num_layers, word, num_of_runs, model_type, concept_masked)
+            word_layer_wise_tcavs = compute_word_tcav(concept_cavs, random_cavs, bottleneck_base, sents, num_layers, word, num_of_runs, model_type, concept_masked)
             concept_masked_tcav_dict[concept_masked] = word_layer_wise_tcavs
 
     # write to pickle file.
@@ -253,6 +276,8 @@ def main():
         help="Path to base labels.")
     parser.add_argument("-c", "--concepts_cavs",
         help="The concept CAV pickle file computed.")
+    parser.add_argument("-rc", "--random_concepts_cavs",
+        help="The random CAV pickle file computed.")
     parser.add_argument("-o", "--output_directory",
         help="The output directory to store the results in.")
     parser.add_argument("-w", "--word", default="[MASK]",
@@ -274,6 +299,7 @@ def main():
     model_type = args.model
 
     concept_cavs = load_pickle_files(args.concepts_cavs)
+    random_cavs = load_pickle_files(args.random_concepts_cavs)
 
     sents = read_sentences(base_sentences)
     base_labels = read_sentences(base_labels)
@@ -286,7 +312,7 @@ def main():
 
     print("[INFO] Computing TCAVs.")
     masked_sents = mask_out_each_concept_in_base_sentences(sents, base_labels, list(concepts2class.values()))
-    run_for_chosen_word_write_to_pickle(masked_sents, concept_cavs, bottleneck_base, base_num_layers, word, output_directory, num_of_runs, model_type)
+    run_for_chosen_word_write_to_pickle(masked_sents, concept_cavs, random_cavs, bottleneck_base, base_num_layers, word, output_directory, num_of_runs, model_type)
 
 if __name__ == '__main__':
     main()

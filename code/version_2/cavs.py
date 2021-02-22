@@ -10,7 +10,7 @@ def split_the_data(X, y):
     """
     Splits the data into train and test sets to compute the scores against.
     """
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42, shuffle=True)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
     return (X_train, X_test, y_train, y_test)
 
 def fit_the_model(X, y, model_type="LR"):

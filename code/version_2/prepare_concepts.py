@@ -199,7 +199,7 @@ def get_bottlenecks(concept_acts, concept_sents, concept_labels, num_layers, max
 
 def get_x_y_of_concept(X, Y):
     """
-    Get's the chunk of X and y who belong to the concept.
+    Get's the chunk of X and Y who belong to the concept.
 
     Arguments
         X (list): the features
@@ -241,7 +241,7 @@ def get_cav_key(run, concept, layerno):
     """
     return '-'.join([f"layer[{layerno}]", str(run), concept])
 
-def parallelized_nrof_runs(X, y, cav_key, model):
+def parallelized_nrof_runs(X, y, cav_key, model, process_type):
     """
     Parallelize the run to utilize the multiprocessing pool.
     
@@ -254,7 +254,11 @@ def parallelized_nrof_runs(X, y, cav_key, model):
     cavs_for_layers = {}
     cav, accuracy = cavs.run(X, y, model_type=model)
     print(f"[INFO] Test Accuracy - {accuracy} for CAV - {cav_key}")
-    if accuracy > 0.8:
+    
+    if process_type == "main":
+        if accuracy > 0.8:
+            cavs_for_layers[cav_key] = cav
+    else:
         cavs_for_layers[cav_key] = cav
 
     return cavs_for_layers
@@ -283,15 +287,19 @@ def run_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
         X, y, _ = utils.create_tensors(toks, bottleneck_concept_acts_per_layer, concept)
         X_concept, y_concept, X_other, y_other = get_x_y_of_concept(X, y)
 
-        X, y, cav_keys, model_types = [], [], [], []  # maintain lists to parallelize the run.
+        X, y, cav_keys, model_types, ops_type = [], [], [], [], []  # maintain lists to parallelize the run.
 
         for run in range(no_of_runs):
-            index = get_random_index(X_other.shape[0], len(X_concept))
-            X_other = X_other[index]
-            y_other = y_other[index]
-            
-            X_ = np.concatenate((X_concept, X_other))
-            y_ = np.concatenate((y_concept, y_other))
+            if (X_other.shape[0] > len(X_concept)):
+                index = get_random_index(X_other.shape[0], len(X_concept))
+                X_other_ = X_other[index]
+                y_other_ = y_other[index]
+             
+                X_ = np.concatenate((X_concept, X_other_))
+                y_ = np.concatenate((y_concept, y_other_))
+            else:
+                X_ = np.concatenate((X_concept, X_other))
+                y_ = np.concatenate((y_concept, y_other))
             
             # shuffle the two lists.
             X_, y_ = shuffle(X_, y_)
@@ -301,12 +309,70 @@ def run_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
             y.append(y_)
             cav_keys.append(cav_key)
             model_types.append(model_type)
+            ops_type.append("main")
         
         pool = ProcessingPool(num_workers)
-        cavs_for_layers = pool.map(parallelized_nrof_runs, X, y, cav_keys, model_types)
+        cavs_for_layers = pool.map(parallelized_nrof_runs, X, y, cav_keys, model_types, ops_type)
+
         concept_cavs[concept] = cavs_for_layers
 
     return concept_cavs
+
+def run_random_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
+                    bottleneck_tokens, concepts2class, model_type, num_workers, no_of_runs):
+    """
+    Perform the test.
+
+    Arguments
+        layerno (str): the layer no.
+        bottleneck_concept_acts_per_layer (list): activations of a specific layer.
+        bottleneck_tokens (dict): dictionary of source (words) and target (labels) of a layer.
+        concepts2class (dict): the concepts.
+        model_type (str): the type of the model.
+        num_workers (int): the number of workers for parallelizing.
+        no_of_runs (int): the number of runs. 
+    Returns
+        random_concept_cavs (dict): the dictionary containing random CAV for each concept for a layer.
+    """
+    random_concept_cavs = {}
+
+    for _, concept in concepts2class.items():
+        toks = modify_labels_according_to_concept(bottleneck_tokens, bottleneck_concept_acts_per_layer, concept) # pass in the concept token vector
+        X, y, _ = utils.create_tensors(toks, bottleneck_concept_acts_per_layer, concept)
+        X_concept, y_concept, X_other, y_other = get_x_y_of_concept(X, y)
+
+        X, y, cav_keys, model_types, ops_type = [], [], [], [], []  # maintain lists to parallelize the run.
+
+        for run in range(no_of_runs):
+            index = get_random_index(X_other.shape[0], len(X_other))
+            random_index = get_random_index(X_other.shape[0], len(X_other))
+            
+            X_random = X_other[random_index]
+            y_random = y_other[random_index]
+
+            X_other_ = X_other[index]
+            y_other_ = np.ones_like(y_random) #y_other[index]
+
+            X_ = np.concatenate((X_random, X_other_))
+            y_ = np.concatenate((y_random, y_other_))
+            
+            # shuffle the two lists.
+            X_, y_ = shuffle(X_, y_)
+
+            cav_key = get_cav_key(run, concept, layerno)
+            random_cav_key = "r-" + cav_key
+            X.append(X_)
+            y.append(y_)
+            cav_keys.append(random_cav_key)
+            model_types.append(model_type)
+            ops_type.append("random")
+
+        pool_r = ProcessingPool(num_workers)
+        random_cavs_for_layers = pool_r.map(parallelized_nrof_runs, X, y, cav_keys, model_types, ops_type)
+        
+        random_concept_cavs[concept] = random_cavs_for_layers
+
+    return random_concept_cavs
 
 def run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_workers, no_of_runs):
     """
@@ -321,22 +387,30 @@ def run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_w
         layer_wise_cavs (dict of dict): cavs of each layer for each concept.
     """
     layer_wise_cavs = {}
+    random_layer_wise_cavs = {}
 
     for layer, bottleneck_acts_per_layer in concept_bottleneck.items():
+
         print(f"[INFO] For layer - {layer}")
         token_bottleneck = tokens_bottleneck[layer]
 
-        cavs_for_layer = run_for_each_layer(layer, bottleneck_acts_per_layer, 
-                                            token_bottleneck, concepts2class, model_type, 
+        cavs_for_layer = run_for_each_layer(layer, bottleneck_acts_per_layer,
+                                            token_bottleneck, concepts2class, model_type,
                                             num_workers, no_of_runs)
-
         layer_wise_cavs[layer] = cavs_for_layer
+        
+        print("[INFO] Running for Random.")
+        random_cavs_for_layer = run_random_for_each_layer(layer, bottleneck_acts_per_layer,
+                                            token_bottleneck, concepts2class, model_type,
+                                            num_workers, no_of_runs)
+        random_layer_wise_cavs[layer] =  random_cavs_for_layer
+        
         print("="*50)
         print()
 
-    return layer_wise_cavs
+    return layer_wise_cavs, random_layer_wise_cavs
 
-def write_the_cavs(output_path, layer_wise_cavs):
+def write_the_cavs(output_path, layer_wise_cavs, random_layer_wise_cavs):
     """
     Write the computed CAVs (for both random and concept) in pickle files for further use.
 
@@ -345,9 +419,13 @@ def write_the_cavs(output_path, layer_wise_cavs):
         layer_wise_cavs (dict): the layerwise computed CAVs.
     """
     layer_wise_cavs_path = output_path + "/layer_wise_cavs.pickle"
+    random_layer_wise_cavs_path = output_path + "/random_layer_wise_cavs.pickle"
 
     with open(layer_wise_cavs_path, "wb") as writer:
         pickle.dump(layer_wise_cavs, writer)
+
+    with open(random_layer_wise_cavs_path, "wb") as writer:
+        pickle.dump(random_layer_wise_cavs, writer)
 
 
 def main():
@@ -400,8 +478,8 @@ def main():
                                                             concept_labels,
                                                             num_layers, max_sentence_l)
     
-    layer_wise_cavs = run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_workers, no_of_runs)
-    write_the_cavs(output_folder, layer_wise_cavs)
+    layer_wise_cavs, random_layer_wise_cavs = run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_workers, no_of_runs)
+    write_the_cavs(output_folder, layer_wise_cavs, random_layer_wise_cavs)
     end = perf_counter()
 
     print(f"Completed the process in {end-start}s")
