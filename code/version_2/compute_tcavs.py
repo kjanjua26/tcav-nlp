@@ -240,14 +240,14 @@ def compute_word_tcav(concept_cavs, random_cavs,
             print(f"[INFO] Random TCAVs - {random_tcavs_per_run}.")
             
             # perform the t-test here and then proceed.
-            p = t_test(tcavs_per_run, random_tcavs_per_run)
-            print(f"[INFO] For Concept {concept}, the p-value is {p}.")
+            #p = t_test(tcavs_per_run, random_tcavs_per_run)
+            #print(f"[INFO] For Concept {concept}, the p-value is {p} at layer {ix}.")
 
             # apply the bonferroni correction and check if the p_value is still less.
-            to_accept = apply_bonferroni_correction(num_of_runs, p)
+            #to_accept = apply_bonferroni_correction(num_of_runs, p)
             
-            if to_accept: # the test is passed.
-                check_for_spurious_cavs[concept] = np.mean(tcavs_per_run)
+            #if to_accept: # the test is passed.
+            check_for_spurious_cavs[concept] = np.mean(tcavs_per_run)
 
         word_tcav[str(ix)] = check_for_spurious_cavs
 
