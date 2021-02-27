@@ -135,12 +135,12 @@ def modify_labels_according_to_concept(tokens, activations, idx):
     
     assert (len(source) == len(targets) == len(activations))
     
-    # 1 is the label you want to be in the labels against the idx.
+    # '1' is the label you want to be in the labels against the idx.
     # mask all others to '0'
-    for ix, sentence in enumerate(source):
+    for ix, word in enumerate(source):
         labels = targets[ix]
         labels = ['1' if x == idx else '0' for x in labels]
-        tokens_up["source"].append(sentence)
+        tokens_up["source"].append(word)
         tokens_up["target"].append(labels)
                     
     return tokens_up
@@ -208,15 +208,18 @@ def get_x_y_of_concept(X, Y):
     X_concept, y_concept = [], []
     X_other, y_other = [], []
 
+    c = 0
     for ix, x in enumerate(X):
         y = Y[ix]
         if y == 1:
+            c += 1
             X_concept.append(x)
             y_concept.append(y)
         else:
             X_other.append(x)
             y_other.append(y)
-    
+
+    print("Len of Samples: ", c)
     return (np.array(X_concept), np.array(y_concept), np.array(X_other), np.array(y_other))
 
 def get_random_index(total_len, n):
@@ -282,10 +285,10 @@ def run_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
     concept_cavs = {}
 
     for _, concept in concepts2class.items():
-        print(f"[INFO] Concept - {concept}")
         toks = modify_labels_according_to_concept(bottleneck_tokens, bottleneck_concept_acts_per_layer, concept) # pass in the concept token vector
         X, y, _ = utils.create_tensors(toks, bottleneck_concept_acts_per_layer, concept)
         X_concept, y_concept, X_other, y_other = get_x_y_of_concept(X, y)
+        print(f"[INFO] Concept - {concept}, Total Concept Samples # {len(X_concept)}, Total Samples {len(X)}")
 
         X, y, cav_keys, model_types, ops_type = [], [], [], [], []  # maintain lists to parallelize the run.
 
@@ -374,7 +377,7 @@ def run_random_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
 
     return random_concept_cavs
 
-def run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_workers, no_of_runs):
+def run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_workers, no_of_runs, if_random):
     """
     Performs the run_for_each_layer() function for each layer.
 
@@ -399,18 +402,19 @@ def run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_w
                                             num_workers, no_of_runs)
         layer_wise_cavs[layer] = cavs_for_layer
         
-        print("[INFO] Running for Random.")
-        random_cavs_for_layer = run_random_for_each_layer(layer, bottleneck_acts_per_layer,
-                                            token_bottleneck, concepts2class, model_type,
-                                            num_workers, no_of_runs)
-        random_layer_wise_cavs[layer] =  random_cavs_for_layer
+        if if_random:
+            print("[INFO] Running for Random.")
+            random_cavs_for_layer = run_random_for_each_layer(layer, bottleneck_acts_per_layer,
+                                                token_bottleneck, concepts2class, model_type,
+                                                num_workers, no_of_runs)
+            random_layer_wise_cavs[layer] =  random_cavs_for_layer
         
         print("="*50)
         print()
 
-    return layer_wise_cavs, random_layer_wise_cavs
+        return layer_wise_cavs, random_layer_wise_cavs
 
-def write_the_cavs(output_path, layer_wise_cavs, random_layer_wise_cavs):
+def write_the_cavs(output_path, layer_wise_cavs, random_layer_wise_cavs, if_random):
     """
     Write the computed CAVs (for both random and concept) in pickle files for further use.
 
@@ -424,8 +428,9 @@ def write_the_cavs(output_path, layer_wise_cavs, random_layer_wise_cavs):
     with open(layer_wise_cavs_path, "wb") as writer:
         pickle.dump(layer_wise_cavs, writer)
 
-    with open(random_layer_wise_cavs_path, "wb") as writer:
-        pickle.dump(random_layer_wise_cavs, writer)
+    if if_random:
+        with open(random_layer_wise_cavs_path, "wb") as writer:
+            pickle.dump(random_layer_wise_cavs, writer)
 
 
 def main():
@@ -441,12 +446,14 @@ def main():
         help="Perform test on individual concept or all the concepts in the dataset.\nPass in the concept name (pos, gender) if you want to do it for all.")
     parser.add_argument("-o", "--output_folder",
         help="The output folder to store the concepts data in.")
-    parser.add_argument("-lm", "--linear_model_type", default="SGDC",
+    parser.add_argument("-lm", "--linear_model_type", default="LR",
         help="The type of linear model to train.")
     parser.add_argument("-w", "--workers",
         help="The number of workers to parallelize.")
     parser.add_argument("-rs", "--runs",
         help="The number of runs.")
+    parser.add_argument("-ir", "--if_random", default="0",
+        help="Whether to compute the random vs random or not.")
     
     args = parser.parse_args()
     num_neurons = 768
@@ -460,6 +467,7 @@ def main():
     model_type = args.linear_model_type
     num_workers = int(args.workers)
     no_of_runs = int(args.runs)
+    if_rand = int(args.if_random)
 
     start = perf_counter()
     concepts_labels_data = read_file(concept_labels)
@@ -478,8 +486,8 @@ def main():
                                                             concept_labels,
                                                             num_layers, max_sentence_l)
     
-    layer_wise_cavs, random_layer_wise_cavs = run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_workers, no_of_runs)
-    write_the_cavs(output_folder, layer_wise_cavs, random_layer_wise_cavs)
+    layer_wise_cavs, random_layer_wise_cavs = run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_workers, no_of_runs, if_rand)
+    write_the_cavs(output_folder, layer_wise_cavs, random_layer_wise_cavs, if_rand)
     end = perf_counter()
 
     print(f"Completed the process in {end-start}s")
