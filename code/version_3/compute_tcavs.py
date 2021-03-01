@@ -266,7 +266,8 @@ def compute_word_tcav(concept_cavs, random_cavs,
 def run_for_chosen_word_write_to_pickle(sentences, concept_cavs, random_cavs,
                                         bottleneck_base, num_layers,
                                         word, output_directory, 
-                                        num_of_runs, model_type, if_rand):
+                                        num_of_runs, model_type, 
+                                        if_rand, workers):
     """
     Computes the TCAV for each word on [MASKED] sentences for each concept.
 
@@ -292,7 +293,7 @@ def run_for_chosen_word_write_to_pickle(sentences, concept_cavs, random_cavs,
 
     to_check_concept_sents = list(sentences.values())
 
-    pool = ProcessingPool(4)
+    pool = ProcessingPool(workers)
     result = pool.map(lambda i: compute_word_tcav(concept_cavs, random_cavs,
                                                     bottleneck_base, to_check_concept_sents[i],
                                                     num_layers, word,
@@ -332,6 +333,8 @@ def main():
         help="The model type to load the unmasker for.")
     parser.add_argument("-ir", "--if_random", default="0",
         help="Whether to compute the random vs random or not.")
+    parser.add_argument("-w", "--workers",
+        help="The number of workers to parallelize.")
 
     args = parser.parse_args()
     num_neurons = 768
@@ -344,6 +347,7 @@ def main():
     word = args.word
     model_type = args.model
     if_rand = int(args.if_random)
+    workers = int(args.workers)
 
     concept_cavs = load_pickle_files(args.concepts_cavs)
 
@@ -364,7 +368,10 @@ def main():
 
     print("[INFO] Computing TCAVs.")
     masked_sents = mask_out_each_concept_in_base_sentences(sents, base_labels, list(concepts2class.values()))
-    run_for_chosen_word_write_to_pickle(masked_sents, concept_cavs, random_cavs, bottleneck_base, base_num_layers, word, output_directory, num_of_runs, model_type, if_rand)
+    run_for_chosen_word_write_to_pickle(masked_sents, concept_cavs, 
+                                        random_cavs, bottleneck_base, 
+                                        base_num_layers, word, output_directory, 
+                                        num_of_runs, model_type, if_rand, workers)
 
 if __name__ == '__main__':
     main()
