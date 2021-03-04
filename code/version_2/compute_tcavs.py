@@ -184,7 +184,7 @@ def compute_word_tcav(concept_cavs, random_cavs,
     word_tcav = {str(k): {} for k in range(1, num_layers+1)}
     unmasker = get_model_unmasker(model_type)
 
-    for ix in [13]:
+    for ix in range(1, num_layers+1):
         check_for_spurious_cavs = {}
         layer_cavs = concept_cavs[str(ix)]
         if if_rand:
@@ -284,10 +284,10 @@ def run_for_chosen_word_write_to_pickle(sentences, concept_cavs, random_cavs,
     concept_masked_tcav_dict = defaultdict(dict)
 
     for concept_masked, sents in sentences.items(): # these are concept_wise masked sentences.
-        if concept_masked in ["NN", "JJ", "NNS", "JJR", "JJS", "DT", "CC", "CD", "VB", "VBP"]:
-            print(f"[INFO] Masked Concept - {concept_masked}")
-            word_layer_wise_tcavs = compute_word_tcav(concept_cavs, random_cavs, bottleneck_base, sents, num_layers, word, num_of_runs, model_type, concept_masked, if_rand)
-            concept_masked_tcav_dict[concept_masked] = word_layer_wise_tcavs
+        #if concept_masked in ["NN", "JJ", "NNS", "JJR", "JJS", "DT", "CC", "CD", "VB", "VBP"]:
+        print(f"[INFO] Masked Concept - {concept_masked}")
+        word_layer_wise_tcavs = compute_word_tcav(concept_cavs, random_cavs, bottleneck_base, sents, num_layers, word, num_of_runs, model_type, concept_masked, if_rand)
+        concept_masked_tcav_dict[concept_masked] = word_layer_wise_tcavs
 
     # write to pickle file.
     with open(write_file_path, "wb") as writer:
