@@ -66,7 +66,7 @@ def get_cav(lm):
         cavs (ndarray): the computed coef_ (cav) of the model.
     """
     cavs = lm.coef_.ravel()
-    return cavs
+    return -1*cavs
 
 def run(X, y, model_type):
     """
