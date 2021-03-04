@@ -184,19 +184,19 @@ def compute_word_tcav(concept_cavs, random_cavs,
     word_tcav = {str(k): {} for k in range(1, num_layers+1)}
     unmasker = get_model_unmasker(model_type)
 
-    for ix in range(1, num_layers+1):
-        
+    for ix in [1, 5, 13]:
         check_for_spurious_cavs = {}
         layer_cavs = concept_cavs[str(ix)]
         if if_rand:
             random_layer_cavs = random_cavs[str(ix)]
 
         for concept, cavs_of_runs in layer_cavs.items():
+            print(f"Running for Concept - {concept}")
             tcavs_per_run = []
 
-            if if_rand:
-                random_tcavs_per_run = []
-                random_layer_cavs_per_concept = random_layer_cavs[concept]
+            #if if_rand:
+            #    random_tcavs_per_run = []
+            #    random_layer_cavs_per_concept = random_layer_cavs[concept]
 
             for run in range(num_of_runs):
                 count = 0
@@ -216,7 +216,8 @@ def compute_word_tcav(concept_cavs, random_cavs,
                             act_per_layer_per_sent = bottleneck_base[str(ix)][jx]
                             
                             print(f"[INFO] The actual label was {gold_label} and the tag of prediction is {tag_of_prediction}.")
-                            
+                            print(f"[INFO] This was tested on concept {concept}.")
+
                             if tag_of_prediction == gold_label:
                                 score_of_tag_preds += 1
                                 
@@ -227,24 +228,24 @@ def compute_word_tcav(concept_cavs, random_cavs,
                                 if dydx: 
                                     count += 1
 
-                                if if_rand:
-                                    r_dydx = directional_derivative(selected_word_acts, random_cav)
-                                    if r_dydx: 
-                                        random_count += 1
+                                #if if_rand:
+                                #    r_dydx = directional_derivative(selected_word_acts, random_cav)
+                                #    if r_dydx: 
+                                #        random_count += 1
 
                     tcav = float(count)/float(score_of_tag_preds)
                     tcavs_per_run.append(tcav)
 
-                    if if_rand:
-                        r_tcav = float(random_count)/float(score_of_tag_preds)
-                        random_tcavs_per_run.append(r_tcav)
+                    #if if_rand:
+                    #    r_tcav = float(random_count)/float(score_of_tag_preds)
+                    #    random_tcavs_per_run.append(r_tcav)
 
                     accuracy = score_of_tag_preds/len(sentences)
 
-                    print(f"For run {run}, the concept {concept} achieved an accuracy (tag matching with gt) of {accuracy}.")
+                    print(f"For run {run}, the concept {gold_label} achieved an accuracy (tag matching with gt) of {accuracy}.")
                     
             
-            print(f"[INFO] TCAVs - {tcavs_per_run}.")
+            print(f"[INFO] Layer - {ix} TCAVs - {tcavs_per_run}, Masked Concept - {gold_label} Tested Concept - {concept}.")
             #print(f"[INFO] Random TCAVs - {random_tcavs_per_run}.")
             
             # perform the t-test here and then proceed.
@@ -283,7 +284,7 @@ def run_for_chosen_word_write_to_pickle(sentences, concept_cavs, random_cavs,
     concept_masked_tcav_dict = defaultdict(dict)
 
     for concept_masked, sents in sentences.items(): # these are concept_wise masked sentences.
-        if concept_masked in ["NN", "JJ", "NNS", "JJR", "JJS", "DT", "CC", "CD", "VB", "VBP"]:
+        if concept_masked in ["CC", "DT"]:
             print(f"[INFO] Masked Concept - {concept_masked}")
             word_layer_wise_tcavs = compute_word_tcav(concept_cavs, random_cavs, bottleneck_base, sents, num_layers, word, num_of_runs, model_type, concept_masked, if_rand)
             concept_masked_tcav_dict[concept_masked] = word_layer_wise_tcavs
@@ -330,7 +331,8 @@ def main():
     if_rand = int(args.if_random)
 
     concept_cavs = load_pickle_files(args.concepts_cavs)
-    
+
+
     if if_rand:
         random_cavs = load_pickle_files(args.random_concepts_cavs)
     else:

@@ -30,7 +30,6 @@ def fit_the_model(X, y, model_type="LR"):
     """
     if model_type == "LR":
         lm = linear_model.LogisticRegression(solver='lbfgs', class_weight='balanced', max_iter=10000)
-        #lm = linear_model.LogisticRegression(solver="sag", max_iter=10000)
     elif model_type == "END":
         lm = linear_model.ElasticNet(random_state=0)
     elif model_type == "ENM":
@@ -67,7 +66,7 @@ def get_cav(lm):
         cavs (ndarray): the computed coef_ (cav) of the model.
     """
     cavs = lm.coef_.ravel()
-    return cavs
+    return -1*cavs
 
 def run(X, y, model_type):
     """
