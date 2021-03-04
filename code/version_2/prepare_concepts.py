@@ -418,24 +418,24 @@ def run(concept_bottleneck, tokens_bottleneck, concepts2class, model_type, num_w
     random_layer_wise_cavs = {}
 
     for layer, bottleneck_acts_per_layer in concept_bottleneck.items():
+        if layer in ["13"]:
+            print(f"[INFO] For layer - {layer}")
+            token_bottleneck = tokens_bottleneck[layer]
 
-        print(f"[INFO] For layer - {layer}")
-        token_bottleneck = tokens_bottleneck[layer]
-
-        cavs_for_layer = run_for_each_layer(layer, bottleneck_acts_per_layer,
-                                            token_bottleneck, concepts2class, model_type,
-                                            num_workers, no_of_runs)
-        layer_wise_cavs[layer] = cavs_for_layer
-        
-        #if if_random:
-        #    print("[INFO] Running for Random.")
-        #    random_cavs_for_layer = run_random_for_each_layer(layer, bottleneck_acts_per_layer,
-        #                                        token_bottleneck, concepts2class, model_type,
-        #                                        num_workers, no_of_runs)
-        #    random_layer_wise_cavs[layer] =  random_cavs_for_layer
-        
-        print("="*50)
-        print()
+            cavs_for_layer = run_for_each_layer(layer, bottleneck_acts_per_layer,
+                                                token_bottleneck, concepts2class, model_type,
+                                                num_workers, no_of_runs)
+            layer_wise_cavs[layer] = cavs_for_layer
+            
+            #if if_random:
+            #    print("[INFO] Running for Random.")
+            #    random_cavs_for_layer = run_random_for_each_layer(layer, bottleneck_acts_per_layer,
+            #                                        token_bottleneck, concepts2class, model_type,
+            #                                        num_workers, no_of_runs)
+            #    random_layer_wise_cavs[layer] =  random_cavs_for_layer
+            
+            print("="*50)
+            print()
 
     return layer_wise_cavs #, random_layer_wise_cavs
 

@@ -66,6 +66,8 @@ def get_cav(lm):
         cavs (ndarray): the computed coef_ (cav) of the model.
     """
     cavs = lm.coef_.ravel()
+    # since this is binary classification, by default the concept is assigned to label 0, 
+    # so multiply by -1 to assign it to label 1 (concept).
     return -1*cavs
 
 def run(X, y, model_type):
