@@ -23,6 +23,8 @@ from transformers import pipeline
 import nltk
 from nltk.tokenize import word_tokenize
 from scipy import stats
+import extraction
+import json
 
 def load_pickle_files(pickled_file):
     """
@@ -184,7 +186,7 @@ def compute_word_tcav(concept_cavs, random_cavs,
     word_tcav = {str(k): {} for k in range(1, num_layers+1)}
     unmasker = get_model_unmasker(model_type)
 
-    for ix in range(1, num_layers+1):
+    for ix in [1, 5, 9, 13]:
         check_for_spurious_cavs = {}
         layer_cavs = concept_cavs[str(ix)]
         if if_rand:
@@ -262,6 +264,51 @@ def compute_word_tcav(concept_cavs, random_cavs,
 
     return word_tcav
 
+def load_the_acts(concept_masked_representations, num_neurons):
+    activations = []
+
+    out = concept_masked_representations.split('\n')
+    for line in out:
+        if line != "":
+            token_acts = []
+            sentence_activations = json.loads(line)['features']
+            for act in sentence_activations:
+                token_acts.append(np.concatenate([l['values'] for l in act['layers']]))
+            activations.append(np.vstack(token_acts))
+
+            num_layers = activations[0].shape[1] / num_neurons
+        
+    return activations, int(num_layers)
+
+def modify_extractions_with_added_masked_word(model_name, masked_sents,
+                                            num_neurons, concept_cavs,
+                                            random_cavs, word,
+                                            num_of_runs, if_rand,
+                                            output_directory):
+    
+    masked_reps_with_sents = {}
+    concept_masked_tcav_dict = defaultdict(dict)
+    write_file_path = f"{output_directory}" + "/inference_word_mode_masked_test.pickle"
+
+    for concept_masked, sents in masked_sents.items():
+        if concept_masked in ["NN", "JJ", "NNS", "JJR", "JJS", "DT", "CC", "CD", "VB", "VBP"]:
+            print("[INFO] Concept Masked - ", concept_masked)
+
+            concept_masked_representations = extraction.extract_representations_from_sents(model_name, sents)
+            base_acts, base_num_layers = load_the_acts(concept_masked_representations, num_neurons)
+            bottleneck_base = segregate_acts_for_each_layer(base_acts, base_num_layers)
+
+            word_layer_wise_tcavs = compute_word_tcav(concept_cavs, random_cavs, 
+                                                    bottleneck_base, sents, 
+                                                    base_num_layers, word, num_of_runs, 
+                                                    model_name, concept_masked, 
+                                                    if_rand)
+        
+            concept_masked_tcav_dict[concept_masked] = word_layer_wise_tcavs
+
+    with open(write_file_path, "wb") as writer:
+        pickle.dump(concept_masked_tcav_dict, writer)
+
 def run_for_chosen_word_write_to_pickle(sentences, concept_cavs, random_cavs,
                                         bottleneck_base, num_layers,
                                         word, output_directory, 
@@ -280,14 +327,20 @@ def run_for_chosen_word_write_to_pickle(sentences, concept_cavs, random_cavs,
         model_type (str): the model type to load the unmasker.
     """
 
-    write_file_path = f"{output_directory}" + "/inference_word_mode.pickle"
+    write_file_path = f"{output_directory}" + "/inference_word_mode_unmasked_test.pickle"
     concept_masked_tcav_dict = defaultdict(dict)
 
     for concept_masked, sents in sentences.items(): # these are concept_wise masked sentences.
-        #if concept_masked in ["NN", "JJ", "NNS", "JJR", "JJS", "DT", "CC", "CD", "VB", "VBP"]:
-        print(f"[INFO] Masked Concept - {concept_masked}")
-        word_layer_wise_tcavs = compute_word_tcav(concept_cavs, random_cavs, bottleneck_base, sents, num_layers, word, num_of_runs, model_type, concept_masked, if_rand)
-        concept_masked_tcav_dict[concept_masked] = word_layer_wise_tcavs
+        if concept_masked in ["NN", "JJ", "NNS", "JJR", "JJS", "DT", "CC", "CD", "VB", "VBP"]:
+            print(f"[INFO] Masked Concept - {concept_masked}")
+
+            word_layer_wise_tcavs = compute_word_tcav(concept_cavs, random_cavs, 
+                                                    bottleneck_base, sents, 
+                                                    num_layers, word, num_of_runs, 
+                                                    model_type, concept_masked, 
+                                                    if_rand)
+
+            concept_masked_tcav_dict[concept_masked] = word_layer_wise_tcavs
 
     # write to pickle file.
     with open(write_file_path, "wb") as writer:
@@ -317,6 +370,8 @@ def main():
         help="The model type to load the unmasker for.")
     parser.add_argument("-ir", "--if_random", default="0",
         help="Whether to compute the random vs random or not.")
+    parser.add_argument("-pm", "--process_mode", default="0",
+        help="The processing mode: MASK or no-MASK base sentences testing.")
 
     args = parser.parse_args()
     num_neurons = 768
@@ -329,7 +384,8 @@ def main():
     word = args.word
     model_type = args.model
     if_rand = int(args.if_random)
-
+    process_mode = int(args.process_mode)
+    
     concept_cavs = load_pickle_files(args.concepts_cavs)
 
 
@@ -344,12 +400,24 @@ def main():
     concepts_dict = get_concepts_dict(base_labels)
     concepts2class = assign_labels_to_concepts(concepts_dict)
 
-    base_acts, base_num_layers = data_loader.load_activations(base_acts_to_compute, num_neurons)
-    bottleneck_base = segregate_acts_for_each_layer(base_acts, base_num_layers)
-
     print("[INFO] Computing TCAVs.")
     masked_sents = mask_out_each_concept_in_base_sentences(sents, base_labels, list(concepts2class.values()))
-    run_for_chosen_word_write_to_pickle(masked_sents, concept_cavs, random_cavs, bottleneck_base, base_num_layers, word, output_directory, num_of_runs, model_type, if_rand)
+    
+    if process_mode: # do the MASKED word acts testing.
+        modify_extractions_with_added_masked_word(model_type, masked_sents, 
+                                            num_neurons, concept_cavs, random_cavs,
+                                            word, num_of_runs, 
+                                            if_rand, output_directory)
+
+    else: # do the unmasked word testing.
+        base_acts, base_num_layers = data_loader.load_activations(base_acts_to_compute, num_neurons)
+        bottleneck_base = segregate_acts_for_each_layer(base_acts, base_num_layers)
+
+        run_for_chosen_word_write_to_pickle(masked_sents, concept_cavs, 
+                                            random_cavs, bottleneck_base, 
+                                            base_num_layers, word, 
+                                            output_directory, num_of_runs, 
+                                            model_type, if_rand)
 
 if __name__ == '__main__':
     main()

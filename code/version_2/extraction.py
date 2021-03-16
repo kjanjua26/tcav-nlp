@@ -302,6 +302,60 @@ def extract_representations(model_name, input_corpus, output_file, device="cpu",
 
     output_file.close()
 
+def extract_representations_from_sents(model_name, input_sents, device="cpu", 
+                                    aggregation="last", output_type="json", 
+                                    filter_vocab=None, model_path=None, 
+                                    limit_max_occurrences=-1, random_weights=False, 
+                                    ignore_embeddings=False, decompose_layers=True):
+
+    print("Loading model")
+    model, tokenizer, sep = get_model_and_tokenizer(
+        model_name,
+        device=device,
+        random_weights=random_weights,
+        model_path=model_path,
+    )
+
+    print("Extracting representations from model")
+    output_json = collections.OrderedDict()
+    out = ""
+    for sentence_idx, sentence in enumerate(input_sents):
+        hidden_states, extracted_words = get_sentence_repr(
+            sentence,
+            model,
+            tokenizer,
+            sep,
+            model_name,
+            filter_vocab,
+            device=device,
+            include_embeddings=(not ignore_embeddings),
+            aggregation=aggregation,
+        )
+
+        output_json["linex_index"] = sentence_idx
+        all_out_features = []
+
+        for word_idx, extracted_word in enumerate(extracted_words):
+            #print('Ex: ', extracted_word)
+            all_layers = []
+            for layer_idx in range(hidden_states.shape[0]):
+                layers = collections.OrderedDict()
+                layers["index"] = layer_idx
+                layers["values"] = [
+                    round(x.item(), 8)
+                    for x in hidden_states[layer_idx, word_idx, :]
+                ]
+                all_layers.append(layers)
+            out_features = collections.OrderedDict()
+            out_features["token"] = extracted_word
+            out_features["layers"] = all_layers
+            all_out_features.append(out_features)
+        output_json["features"] = all_out_features
+        out = out + json.dumps(output_json) + "\n"
+
+    return out
+
+
 
 HDF5_SPECIAL_TOKENS = {
     ".": "__DOT__",
