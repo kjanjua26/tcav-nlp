@@ -127,7 +127,7 @@ def directional_derivative(ft, cav):
     dot = np.dot(ft, cav)
     return dot < 0
 
-def mask_out_each_concept_in_base_sentences(sents, base_labels, concepts):
+def mask_out_each_concept_in_base_sentences(sents, base_labels, concepts, word):
     """
     Masks out each concept in base sentences to compute the TCAV for each word for analysis.
 
@@ -148,7 +148,7 @@ def mask_out_each_concept_in_base_sentences(sents, base_labels, concepts):
             try:
                 index = label.split(' ').index(concept)
                 word_in_sent = sent.split(' ')[index]
-                sent = sent.replace(word_in_sent, '[MASK]', 1)
+                sent = sent.replace(word_in_sent, word, 1)
                 sents_masked[concept].append(sent)
             except:
                 sents_masked[concept].append(sent)
@@ -301,7 +301,7 @@ def modify_extractions_with_added_masked_word(model_name, masked_sents,
                                             random_cavs, word,
                                             num_of_runs, if_rand,
                                             output_directory):
-    
+
     masked_reps_with_sents = {}
     concept_masked_tcav_dict = defaultdict(dict)
     write_file_path = f"{output_directory}" + "/inference_word_mode_masked_test.pickle"
@@ -379,7 +379,7 @@ def main():
         help="The random CAV pickle file computed.")
     parser.add_argument("-o", "--output_directory",
         help="The output directory to store the results in.")
-    parser.add_argument("-w", "--word", default="[MASK]",
+    parser.add_argument("-w", "--word",
         help="The word to compute the TCAVs for in w mode.")
     parser.add_argument("-rs", "--runs",
         help="The number of runs used to get CAVs.")
@@ -418,7 +418,7 @@ def main():
     concepts2class = assign_labels_to_concepts(concepts_dict)
 
     print("[INFO] Computing TCAVs.")
-    masked_sents = mask_out_each_concept_in_base_sentences(sents, base_labels, list(concepts2class.values()))
+    masked_sents = mask_out_each_concept_in_base_sentences(sents, base_labels, list(concepts2class.values()), word)
     print(masked_sents)
     if process_mode: # do the MASKED word acts testing.
         modify_extractions_with_added_masked_word(model_type, masked_sents, 
