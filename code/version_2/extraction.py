@@ -20,14 +20,15 @@ from transformers import (
     RobertaModel,
     DistilBertTokenizer,
     DistilBertModel,
+    BertForMaskedLM,
+    RobertaForMaskedLM,
 )
-
 ## Globals
 tokenization_counts = {}
 MAX_SEQ_LEN = 512
 
 def get_model_and_tokenizer(
-    model_name, device="cpu", random_weights=False, model_path=None
+    model_name, mtype, device="cpu", random_weights=False, model_path=None
 ):
     """
     model_path: if given, initialize from path instead of official repo
@@ -57,9 +58,15 @@ def get_model_and_tokenizer(
         tokenizer = XLMTokenizer.from_pretrained(init_model)
         sep = "</w>"
     elif model_name.startswith("bert"):
-        model = BertModel.from_pretrained(init_model, output_hidden_states=True).to(
+
+        if mtype == "grad":
+            model = BertForMaskedLM.from_pretrained(init_model, output_hidden_states=True).to(
             device
         )
+        else:
+            model = BertModel.from_pretrained(init_model, output_hidden_states=True).to(
+                device
+            )
         tokenizer = BertTokenizer.from_pretrained(init_model)
         sep = "##"
     elif model_name.startswith("distilbert"):
@@ -69,9 +76,15 @@ def get_model_and_tokenizer(
         tokenizer = DistilBertTokenizer.from_pretrained(init_model)
         sep = "##"
     elif model_name.startswith("roberta"):
-        model = RobertaModel.from_pretrained(model_name, output_hidden_states=True).to(
+        
+        if mtype == "grad":
+            model = RobertaForMaskedLM.from_pretrained(model_name, output_hidden_states=True).to(
             device
         )
+        else:
+            model = RobertaModel.from_pretrained(model_name, output_hidden_states=True).to(
+                device
+            )
         tokenizer = RobertaTokenizer.from_pretrained(model_name)
         sep = "Ġ"
     else:
@@ -195,6 +208,7 @@ def extract_representations(model_name, input_corpus, output_file, device="cpu",
     print("Loading model")
     model, tokenizer, sep = get_model_and_tokenizer(
         model_name,
+        mtype="normal",
         device=device,
         random_weights=random_weights,
         model_path=model_path,
@@ -311,6 +325,7 @@ def extract_representations_from_sents(model_name, input_sents, device="cpu",
     print("Loading model")
     model, tokenizer, sep = get_model_and_tokenizer(
         model_name,
+        mtype="normal",
         device=device,
         random_weights=random_weights,
         model_path=model_path,

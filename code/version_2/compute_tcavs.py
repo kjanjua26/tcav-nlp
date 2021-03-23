@@ -25,6 +25,9 @@ from nltk.tokenize import word_tokenize
 from scipy import stats
 import extraction
 import json
+import torch
+import logging
+logging.disable(logging.INFO)
 
 def write_pickle_file(layer_tcav, output_path, name):
     """
@@ -176,12 +179,39 @@ def apply_bonferroni_correction(num_of_runs, p):
     alpha = float(default)/float(num_of_runs)
     return p <= alpha
 
+def get_gradients(model, tokenizer, original_sentence, 
+                  masked_sentence, layer):
+    """
+    Get the gradient using the activations.
+
+    Arguments
+        model_type (str): the name of the model.
+        input_sent (str): the input sentence.
+        masked_sent (str): the masked sentence.
+        layer (int): the layer to get the grad of.
+
+    Returns
+        grads (torch.tensor): the gradients of layer (at the masked token position) w.r.t to the current prediction
+    """
+    print("[INFO] Sentence: ", original_sentence)
+    print("[INFO] Masked Sentence: ", masked_sentence)
+
+    inputs = tokenizer(masked_sentence, return_tensors="pt")
+    label = tokenizer(original_sentence, return_tensors="pt")["input_ids"]
+
+    masked_idx = torch.where(inputs['input_ids'] == tokenizer.mask_token_id)[1][0].item()
+
+    model_output = model(**inputs, labels=label)
+
+    gradients = torch.autograd.grad(model_output.loss, model_output.hidden_states[int(layer)-1])[0][0, masked_idx, :]
+    return gradients
+
 def compute_word_tcav(concept_cavs, random_cavs,
                       bottleneck_base,
                       sentences, num_layers, 
                       word, num_of_runs, 
                       model_type, gold_label, 
-                      if_rand, output_directory):
+                      if_rand, output_directory, use_grad):
     """
     Compute TCAV scores for a given CAV of a concept and every word in each sentence in the base corpus.
 
@@ -199,6 +229,7 @@ def compute_word_tcav(concept_cavs, random_cavs,
     word_tcav = defaultdict(dict)
     word_tcav = {str(k): {} for k in range(1, num_layers+1)}
     unmasker = get_model_unmasker(model_type)
+    model, tokenizer, _ = extraction.get_model_and_tokenizer(model_type, mtype="grad")
 
     for lx in list(word_tcav.keys()):
         check_for_spurious_cavs = {}
@@ -227,8 +258,11 @@ def compute_word_tcav(concept_cavs, random_cavs,
                         words = list(sent.split(' '))
                         if word in words:
                             pred_sent, pred_token, pred_score = get_top_prediction_from_unmasker(unmasker, sent)
-                            print(f"[INFO] Model {model_type} predicted {pred_token} in place of [MASK] with conf. score of {round(pred_score, 3)}.")
+                            #print(f"[INFO] Model {model_type} predicted {pred_token} in place of [MASK] with conf. score of {round(pred_score, 3)}.")
+                            
                             tag_of_prediction = get_pos_label_for_MASK(pred_sent, pred_token)
+                            predicted_sentence = sent.replace(word, pred_token)
+
                             act_per_layer_per_sent = bottleneck_base[str(lx)][jx]
                             
                             print(f"[INFO] The actual label was {gold_label} and the tag of prediction is {tag_of_prediction}.")
@@ -239,7 +273,12 @@ def compute_word_tcav(concept_cavs, random_cavs,
                                 
                                 selected_word_index = words.index(word)
                                 selected_word_acts = act_per_layer_per_sent[selected_word_index]
-                                dydx = directional_derivative(selected_word_acts, cav)
+
+                                if use_grad:
+                                    grads = get_gradients(model, tokenizer, predicted_sentence, sent, lx)
+                                    dydx = directional_derivative(grads, cav)
+                                else:
+                                    dydx = directional_derivative(selected_word_acts, cav)
                                 
                                 if dydx: 
                                     count += 1
@@ -256,9 +295,10 @@ def compute_word_tcav(concept_cavs, random_cavs,
                     #    r_tcav = float(random_count)/float(score_of_tag_preds)
                     #    random_tcavs_per_run.append(r_tcav)
 
-                    accuracy = score_of_tag_preds/len(sentences)
-
-                    print(f"For run {run}, the concept {gold_label} achieved an accuracy (tag matching with gt) of {accuracy}.")
+                    #accuracy = score_of_tag_preds/len(sentences)
+                    print(f"[INFO] Concept {gold_label}\n[INFO] Total # of sentences {len(sentences)}\n[INFO] Matched Tag # of Sentences {score_of_tag_preds}")
+                    print("="*100)
+                    #print(f"For run {run}, the concept {gold_label} achieved an accuracy (tag matching with gt) of {accuracy}.")
                     
             print(f"[INFO] Layer - {lx} TCAVs - {tcavs_per_run}, Masked Concept - {gold_label} Tested Concept - {concept}.")
             #print(f"[INFO] Random TCAVs - {random_tcavs_per_run}.")
@@ -300,7 +340,7 @@ def modify_extractions_with_added_masked_word(model_name, masked_sents,
                                             num_neurons, concept_cavs,
                                             random_cavs, word,
                                             num_of_runs, if_rand,
-                                            output_directory):
+                                            output_directory, use_grad):
 
     masked_reps_with_sents = {}
     concept_masked_tcav_dict = defaultdict(dict)
@@ -319,7 +359,7 @@ def modify_extractions_with_added_masked_word(model_name, masked_sents,
                                                     bottleneck_base, sents, 
                                                     base_num_layers, word, num_of_runs, 
                                                     model_name, concept_masked, 
-                                                    if_rand, output_directory)
+                                                    if_rand, output_directory, use_grad)
         
             concept_masked_tcav_dict[concept_masked] = word_layer_wise_tcavs
 
@@ -329,7 +369,8 @@ def modify_extractions_with_added_masked_word(model_name, masked_sents,
 def run_for_chosen_word_write_to_pickle(sentences, concept_cavs, random_cavs,
                                         bottleneck_base, num_layers,
                                         word, output_directory, 
-                                        num_of_runs, model_type, if_rand):
+                                        num_of_runs, model_type, 
+                                        if_rand, use_grad):
     """
     Computes the TCAV for each word on [MASKED] sentences for each concept.
 
@@ -354,8 +395,8 @@ def run_for_chosen_word_write_to_pickle(sentences, concept_cavs, random_cavs,
             word_layer_wise_tcavs = compute_word_tcav(concept_cavs, random_cavs, 
                                                     bottleneck_base, sents, 
                                                     num_layers, word, num_of_runs, 
-                                                    model_type, concept_masked, 
-                                                    if_rand, output_directory)
+                                                    model_type, concept_masked,
+                                                    if_rand, output_directory, use_grad)
 
             concept_masked_tcav_dict[concept_masked] = word_layer_wise_tcavs
 
@@ -387,8 +428,10 @@ def main():
         help="The model type to load the unmasker for.")
     parser.add_argument("-ir", "--if_random", default="0",
         help="Whether to compute the random vs random or not.")
-    parser.add_argument("-pm", "--process_mode", default="0",
+    parser.add_argument("-pm", "--process_mode", default="1",
         help="The processing mode: MASK or no-MASK base sentences testing.")
+    parser.add_argument("-g", "--use_grad", default="1",
+        help="Use gradients to compute CAV.")
 
     args = parser.parse_args()
     num_neurons = 768
@@ -402,6 +445,7 @@ def main():
     model_type = args.model
     if_rand = int(args.if_random)
     process_mode = int(args.process_mode)
+    use_grad = int(args.use_grad)
     
     concept_cavs = load_pickle_files(args.concepts_cavs)
 
@@ -419,12 +463,12 @@ def main():
 
     print("[INFO] Computing TCAVs.")
     masked_sents = mask_out_each_concept_in_base_sentences(sents, base_labels, list(concepts2class.values()), word)
-    print(masked_sents)
+
     if process_mode: # do the MASKED word acts testing.
         modify_extractions_with_added_masked_word(model_type, masked_sents, 
                                             num_neurons, concept_cavs, random_cavs,
                                             word, num_of_runs, 
-                                            if_rand, output_directory)
+                                            if_rand, output_directory, use_grad)
 
     else: # do the unmasked word testing.
         base_acts, base_num_layers = data_loader.load_activations(base_acts_to_compute, num_neurons)
@@ -434,7 +478,7 @@ def main():
                                             random_cavs, bottleneck_base, 
                                             base_num_layers, word, 
                                             output_directory, num_of_runs, 
-                                            model_type, if_rand)
+                                            model_type, if_rand, use_grad)
 
 if __name__ == '__main__':
     main()
