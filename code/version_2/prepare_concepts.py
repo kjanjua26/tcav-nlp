@@ -3,7 +3,7 @@
 """
 
 import sys
-sys.path.append("/Users/Janjua/Desktop/QCRI/Work/aux_classifier/")
+sys.path.append("/alt/mt/tcav/NeuroX/")
 import aux_classifier.extraction as extraction
 import aux_classifier.data_loader as data_loader
 import aux_classifier.utils as utils

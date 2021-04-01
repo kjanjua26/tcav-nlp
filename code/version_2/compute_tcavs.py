@@ -4,7 +4,7 @@
     Computes both ways: sentence TCAV and word TCAV.
 """
 import sys
-sys.path.append("/Users/Janjua/Desktop/QCRI/Work/aux_classifier/")
+sys.path.append("/alt/mt/tcav/NeuroX/")
 import aux_classifier.data_loader as data_loader
 
 import argparse, os
@@ -206,6 +206,33 @@ def get_gradients(model, tokenizer, original_sentence,
     gradients = torch.autograd.grad(model_output.loss, model_output.hidden_states[int(layer)-1])[0][0, masked_idx, :]
     return gradients
 
+def get_token_loss_gradients(model, tokenizer, original_sentence, 
+                            masked_sentence, layer):
+
+    """
+    Get the gradient using the activations.
+
+    Arguments
+        model_type (str): the name of the model.
+        input_sent (str): the input sentence.
+        masked_sent (str): the masked sentence.
+        layer (int): the layer to get the grad of.
+
+    Returns
+        grads (torch.tensor): the gradients of layer (at the masked token position) w.r.t token (MASK) loss.
+    """
+    print("[INFO] Sentence: ", original_sentence)
+    print("[INFO] Masked Sentence: ", masked_sentence)              
+
+    inputs = tokenizer(masked_sentence, return_tensors="pt")
+    masked_idx = torch.where(inputs['input_ids'] == tokenizer.mask_token_id)[1][0].item()
+    model_output = model(**inputs)
+    predicted_labels = torch.argmax(model_output.logits, axis=-1)
+    loss_fct = torch.nn.CrossEntropyLoss(reduction='none')
+    predicted_token_loss = loss_fct(model_output.logits.view(-1, tokenizer.vocab_size), predicted_labels.view(-1))[masked_idx]
+    gradients = torch.autograd.grad(predicted_token_loss, model_output.hidden_states[int(layer)-1])[0][0, masked_idx, :]
+    return gradients
+
 def compute_word_tcav(concept_cavs, random_cavs,
                       bottleneck_base,
                       sentences, num_layers, 
@@ -230,8 +257,10 @@ def compute_word_tcav(concept_cavs, random_cavs,
     word_tcav = {str(k): {} for k in range(1, num_layers+1)}
     unmasker = get_model_unmasker(model_type)
     model, tokenizer, _ = extraction.get_model_and_tokenizer(model_type, mtype="grad")
+    # normal => list(word_tcav.keys())
 
-    for lx in list(word_tcav.keys()):
+    # test for only last layer.
+    for lx in list(["13"]):
         check_for_spurious_cavs = {}
         layer_cavs = concept_cavs[str(lx)]
         if if_rand:
@@ -275,7 +304,8 @@ def compute_word_tcav(concept_cavs, random_cavs,
                                 selected_word_acts = act_per_layer_per_sent[selected_word_index]
 
                                 if use_grad:
-                                    grads = get_gradients(model, tokenizer, predicted_sentence, sent, lx)
+                                    # use gradients computed w.r.t to the loss.
+                                    grads = get_token_loss_gradients(model, tokenizer, predicted_sentence, sent, lx)
                                     dydx = directional_derivative(grads, cav)
                                 else:
                                     dydx = directional_derivative(selected_word_acts, cav)
