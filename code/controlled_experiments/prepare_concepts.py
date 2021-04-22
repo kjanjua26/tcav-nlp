@@ -19,6 +19,7 @@ from sklearn.utils import shuffle
 from statistics import mean
 import matplotlib.pyplot as plt
 import seaborn as sns
+import logging
 
 def read_file(fp):
     """
@@ -188,6 +189,8 @@ def modify_labels_for_controlled_experiments(tokens, activations, idx):
         tokens_up["target"].append(modified_labels)
 
     # get the count of words assigned 0s and 1s
+    logging.info(f"[INFO] 0 Labels are {len([x for x in tokens_up['target'] for y in x if y == '0'])}.")
+    logging.info(f"[INFO] 1 Labels are {len([x for x in tokens_up['target'] for y in x if y == '1'])}.")
     print(f"[INFO] 0 Labels are {len([x for x in tokens_up['target'] for y in x if y == '0'])}.")
     print(f"[INFO] 1 Labels are {len([x for x in tokens_up['target'] for y in x if y == '1'])}.")
     return tokens_up
@@ -306,6 +309,7 @@ def parallelized_nrof_runs(X, y, cav_key, model, process_type):
     to_return = []
 
     cav, accuracy = cavs.run(X, y, model_type=model)
+    logging.info(f"[INFO] Test Accuracy - {accuracy} for CAV - {cav_key}")
     print(f"[INFO] Test Accuracy - {accuracy} for CAV - {cav_key}")
     
     if process_type == "main":
@@ -343,65 +347,43 @@ def run_for_each_layer(layerno, bottleneck_concept_acts_per_layer,
     concept_accuracies = {}
 
     for _, concept in concepts2class.items():
-        toks = modify_labels_according_to_concept(bottleneck_tokens, bottleneck_concept_acts_per_layer, concept) # pass in the concept token vector
-        
-        X_, y_, mappings = utils.create_tensors(toks, bottleneck_concept_acts_per_layer, concept)
-        label2idx, idx2label, src2idx, idx2src = mappings
-
-        if label2idx["1"] != 1:
-            # the mapping was reverse, logical_not(y).
-            y_ = np.logical_not(y_).astype(int)
-            
-        print(f"[INFO] Concept - {concept}, Len - {len([x for x in y_ if x == 1])}")
-        print(f"[INFO] Other Len - {len([x for x in y_ if x == 0])}")
-        
-        X_, y_ = utils.balance_binary_class_data(X_, y_)
-        
-        print(f"Concept - {concept}, Len - {len([x for x in y_ if x == 1])}")
-        print(f"Other Len - {len([x for x in y_ if x == 0])}")
+        concept_cavs[concept] = []
 
         X, y, cav_keys, model_types, ops_type = [], [], [], [], []
-        cav_key = get_cav_key(0, concept, layerno)
-        cav_keys.append(cav_key)
-        model_types.append(model_type)
-        ops_type.append("main")
-        X.append(X_)
-        y.append(y_)
-
-        """
-        X_concept, y_concept, X_other, y_other = get_x_y_of_concept(X, y)
-        print(f"[INFO] Concept - {concept}, Total Concept Samples # {len(X_concept)}, Total Samples {len(X)}")
-
-        X, y, cav_keys, model_types, ops_type = [], [], [], [], []  # maintain lists to parallelize the run.
-
-        
         for run in range(no_of_runs):
-            #if (X_other.shape[0] > len(X_concept)):
-            index = get_random_index(X_other.shape[0], len(X_concept))
-            X_other = X_other[index]
-            y_other = y_other[index]
+            toks = modify_labels_according_to_concept(bottleneck_tokens, bottleneck_concept_acts_per_layer, concept) # pass in the concept token vector
+
+            X_, y_, mappings = utils.create_tensors(toks, bottleneck_concept_acts_per_layer, concept)
+            label2idx, idx2label, src2idx, idx2src = mappings
+
+            if label2idx["1"] != 1:
+                # the mapping was reverse, logical_not(y).
+                y_ = np.logical_not(y_).astype(int)
+                
+            print(f"[INFO] Concept - {concept}, Len - {len([x for x in y_ if x == 1])}")
+            print(f"[INFO] Other Len - {len([x for x in y_ if x == 0])}")
             
-            X_ = np.concatenate((X_concept, X_other))
-            y_ = np.concatenate((y_concept, y_other))
-            #else:
-            #    X_ = np.concatenate((X_concept, X_other))
-            #    y_ = np.concatenate((y_concept, y_other))
+            X_, y_ = utils.balance_binary_class_data(X_, y_)
             
-            # shuffle the two lists.
-            X_, y_ = shuffle(X_, y_)
+            logging.info(f"Concept - {concept}, Len - {len([x for x in y_ if x == 1])}")
+            logging.info(f"Other Len - {len([x for x in y_ if x == 0])}")
+
+            print(f"Concept - {concept}, Len - {len([x for x in y_ if x == 1])}")
+            print(f"Other Len - {len([x for x in y_ if x == 0])}")
 
             cav_key = get_cav_key(run, concept, layerno)
-            X.append(X_)
-            y.append(y_)
             cav_keys.append(cav_key)
             model_types.append(model_type)
             ops_type.append("main")
-        """
+            X.append(X_)
+            y.append(y_)
 
         pool = ProcessingPool(num_workers)
         to_return = pool.map(parallelized_nrof_runs, X, y, cav_keys, model_types, ops_type)
 
-        concept_cavs[concept] = to_return[0][0]
+        for run in range(no_of_runs):
+            concept_cavs[concept].append(to_return[run][0])
+
         concept_accuracies[concept] = to_return[0][1]
 
     return concept_cavs, concept_accuracies
@@ -411,36 +393,43 @@ def run_controlled_experiment_for_each_layer(layerno, bottleneck_concept_acts_pe
                                             model_type, num_workers, 
                                             no_of_runs):
 
-    # TODO: Plot the accuracies!
     concept_cavs = {}
     concept_accuracies = {}
 
     for _, concept in concepts2class.items():
-        controlled_toks = modify_labels_for_controlled_experiments(bottleneck_tokens, bottleneck_concept_acts_per_layer, concept)
-        X_controlled, y_controlled, controlled_mappings = utils.create_tensors(controlled_toks, bottleneck_concept_acts_per_layer, concept)
-        c_label2idx, _, _, _ = controlled_mappings
-        
-        if c_label2idx["1"] != 1:
-            # the mapping was reverse, logical_not(y).
-            y_controlled = np.logical_not(y_controlled).astype(int)
-        
-        X_, y_ = utils.balance_binary_class_data(X_controlled, y_controlled)
-
-        print(f"Concept - {concept}, Len - {len([x for x in y_ if x == 1])}")
-        print(f"Other Len - {len([x for x in y_ if x == 0])}")
-
         X, y, cav_keys, model_types, ops_type = [], [], [], [], []
-        cav_key = get_cav_key(0, concept, layerno)
-        cav_keys.append(cav_key)
-        model_types.append(model_type)
-        ops_type.append("controlled")
-        X.append(X_)
-        y.append(y_)
+        concept_cavs[concept] = []
+
+        for run in range(no_of_runs):
+            controlled_toks = modify_labels_for_controlled_experiments(bottleneck_tokens, bottleneck_concept_acts_per_layer, concept)
+            X_controlled, y_controlled, controlled_mappings = utils.create_tensors(controlled_toks, bottleneck_concept_acts_per_layer, concept)
+            c_label2idx, _, _, _ = controlled_mappings
+            
+            if c_label2idx["1"] != 1:
+                # the mapping was reverse, logical_not(y).
+                y_controlled = np.logical_not(y_controlled).astype(int)
+            
+            X_, y_ = utils.balance_binary_class_data(X_controlled, y_controlled)
+
+            print(f"Concept - {concept}, Len - {len([x for x in y_ if x == 1])}")
+            print(f"Other Len - {len([x for x in y_ if x == 0])}")
+
+            logging.info(f"Concept - {concept}, Len - {len([x for x in y_ if x == 1])}")
+            logging.info(f"Other Len - {len([x for x in y_ if x == 0])}")
+            
+            cav_key = get_cav_key(run, concept, layerno)
+            cav_keys.append(cav_key)
+            model_types.append(model_type)
+            ops_type.append("controlled")
+            X.append(X_)
+            y.append(y_)
 
         pool = ProcessingPool(num_workers)
         to_return = pool.map(parallelized_nrof_runs, X, y, cav_keys, model_types, ops_type)
 
-        concept_cavs[concept] = to_return[0][0]
+        for run in range(no_of_runs):
+            concept_cavs[concept].append(to_return[run][0])
+
         concept_accuracies[concept] = to_return[0][1]
 
     return concept_cavs, concept_accuracies
@@ -468,6 +457,7 @@ def run(concept_bottleneck, tokens_bottleneck,
 
     for layer, bottleneck_acts_per_layer in concept_bottleneck.items():
         if layer in layers:
+            logging.info(f"[INFO] For layer - {layer}")
             print(f"[INFO] For layer - {layer}")
             token_bottleneck = tokens_bottleneck[layer]
 
@@ -478,6 +468,7 @@ def run(concept_bottleneck, tokens_bottleneck,
             layer_accuracies[layer] = concept_accuracies
 
             if if_controlled:
+                logging.info(f"[INFO] Training for Controlled Experiment!")
                 print(f"[INFO] Training for Controlled Experiment!")
                 controlled_cavs_for_layer, cont_concept_accuracies = run_controlled_experiment_for_each_layer(layer, bottleneck_acts_per_layer,
                                                         token_bottleneck, concepts2class, model_type,
@@ -548,6 +539,8 @@ def write_the_cavs(output_path, layer_wise_cavs,
 def main():
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("-n", "--name",
+        help="The name of the experiment.")
     parser.add_argument("-i", "--input_corpus",
         help="File path to prepare concepts from.")
     parser.add_argument("-l", "--label_corpus",
@@ -572,8 +565,8 @@ def main():
     args = parser.parse_args()
     num_neurons = 768
     max_sentence_l = 512
-    concept_type = ["pos", "gender"] # currently only dealing with two types of concepts entirely - pos, gender (m, f).
-
+    
+    name = args.name
     concept_sents = args.input_corpus
     concept_labels = args.label_corpus
     concepts = args.concepts
@@ -584,20 +577,25 @@ def main():
     no_of_runs = int(args.runs)
     if_controlled = int(args.if_controlled)
     
+    # add the log file.
+    logging.basicConfig(filename=f"{name}.log", level=logging.DEBUG)
+    logging.info(f"Preparing Concepts for experiment {name}.")
+
     start = perf_counter()
     concepts_labels_data = read_file(concept_labels)
     concept_acts, num_layers = load_activations(args.embeddings, num_neurons)
     
     concepts_dict = get_concepts_dict(concepts_labels_data)
     concepts2class = assign_labels_to_concepts(concepts_dict)
-
-    if concepts not in concept_type:
-        concepts2class = {i[0]: i[1] for i in enumerate(concepts.split(' '))}
+    concepts2class = {i[0]: i[1] for i in enumerate(concepts.split(' '))}
 
     layers = list(layers.split(' '))
 
     print("[INFO] Concepts: ", list(concepts2class.values()))
     print("[INFO] Total Layers: ", layers)
+
+    logging.info(f"[INFO] Concepts {list(concepts2class.values())}")
+    logging.info(f"[INFO] Total Layers {layers}")
 
     concept_bottleneck, tokens_bottleneck = get_bottlenecks(concept_acts,
                                                             concept_sents,
@@ -608,7 +606,7 @@ def main():
     write_the_cavs(output_folder, layer_wise_cavs, controlled_cavs_per_layer, if_controlled)
     end = perf_counter()
 
-    print(f"Completed the process in {end-start}s")
+    logging.info(f"Completed the process in {end-start}s")
 
 if __name__ == '__main__':
     main()
